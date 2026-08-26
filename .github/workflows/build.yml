@@ -40,15 +40,19 @@ jobs:
       # --------------------------------------------------------------------
       - name: Stable Bypass FLAG_SECURE
         run: |
+          echo "Applying FLAG_SECURE bypass..."
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
+          echo "FLAG_SECURE bypass applied."
 
       # --------------------------------------------------------------------
       # 2. Change App Name to ShikhoMax
       # --------------------------------------------------------------------
       - name: Update App Name
         run: |
+          echo "Updating app name to ShikhoMax..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+          echo "App name updated."
 
       # --------------------------------------------------------------------
       # 3. Replace Icons (if you supply app_icon.png)
@@ -61,6 +65,7 @@ jobs:
 
           icon_src = "app_icon.png"
           if os.path.exists(icon_src):
+              print("Overriding app icons...")
               for root, dirs, files in os.walk("decompiled_app/res"):
                   if "anydpi" in root:
                       for f in files:
@@ -80,15 +85,21 @@ jobs:
               for folder, size in sizes.items():
                   dir_path = os.path.join("decompiled_app/res", folder)
                   if os.path.exists(dir_path):
+                      os.makedirs(dir_path, exist_ok=True)
                       resized = orig.resize(size, Image.Resampling.LANCZOS)
                       for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
                           out_file = os.path.join(dir_path, name)
-                          resized.save(out_file, format="PNG", optimize=True)
-              print("Icons replaced.")
+                          try:
+                              resized.save(out_file, format="PNG", optimize=True)
+                          except Exception as e:
+                              print(f"Warning: Could not save icon to {out_file}: {e}")
+              print("Icons replaced successfully.")
+          else:
+              print("app_icon.png not found, skipping icon override.")
           EOF
 
       # --------------------------------------------------------------------
-      # 4. Aggressive Smali Patching – Full Unlock Logic
+      # 4. Advanced Smali Patching – Full Unlock Logic
       # --------------------------------------------------------------------
       - name: Advanced Full Unlock Patch (Methods, Fields & Course Logic)
         run: |
@@ -96,8 +107,6 @@ jobs:
           import os
           import re
 
-          # --- Heuristic classification for methods ---
-          # Methods that should ALWAYS return TRUE (or equivalent for other types)
           TRUE_KEYWORDS = [
               "isUnlocked", "isEnrolled", "hasAccess", "isPurchased", "isPremium",
               "isSubscribed", "canAccess", "isAllowed", "isAvailable", "isFree",
@@ -106,203 +115,139 @@ jobs:
               "getIsUnlocked", "getIsEnrolled", "getHasAccess", "getIsPurchased",
               "getIsPremium", "getIsSubscribed", "isOfflineAvailable",
               "hasSubscription", "isPro", "isMember", "isActivated", "isAuthorized",
-              "canDownload", "isDownloadable", "isComplete", "isFinished", "isPurchased",
-              "getCourseStatus", "getUnlockStatus", "getAccessLevel", "getFeatureStatus"
+              "canDownload", "isDownloadable", "isComplete", "isFinished",
+              "getCourseStatus", "getUnlockStatus", "getAccessLevel", "getFeatureStatus",
+              "isGranted", "isEligible", "hasPermission", "isPermitted", "isEnabled"
           ]
 
-          # Methods that should ALWAYS return FALSE (or equivalent for other types)
           FALSE_KEYWORDS = [
               "isLocked", "isRestricted", "requiresSubscription", "requiresPayment",
               "isItemLocked", "isContentLocked", "isVideoLocked", "isPdfLocked",
               "isLessonLocked", "needsPurchase", "isBlocked", "isDenied",
               "getIsLocked", "getIsRestricted", "isTrial", "isExpired", "isPending",
-              "isForbidden", "isInvalid", "isLimited", "isFreeTrial"
+              "isForbidden", "isInvalid", "isLimited", "isFreeTrial",
+              "isRevoked", "isSuspended", "isDeactivated", "isMissingPermission"
           ]
 
-          # Additional generic access-check patterns
-          ACCESS_KEYWORDS = [
+          ACCESS_KEYWORDS_BROAD = [
               "lock", "unlock", "enroll", "subscribe", "premium", "paid",
               "access", "allow", "restrict", "free", "purchase", "buy",
               "course", "lesson", "video", "pdf", "exam", "quiz", "content", "resource",
-              "status", "state", "permission", "entitlement", "feature",
-              "check", "verify", "validate", "auth"
+              "status", "state", "permission", "entitlement", "feature", "check",
+              "verify", "validate", "auth", "license", "payment", "membership", "plan"
           ]
 
-          # Helper to determine if a method should be patched to return true or false
           def get_patch_action(method_name):
-              method_lower = method_name.lower()
-              
-              # Explicit TRUE keywords
-              for kw in TRUE_KEYWORDS:
-                  if kw.lower() in method_lower:
-                      return "TRUE"
-              
-              # Explicit FALSE keywords
-              for kw in FALSE_KEYWORDS:
-                  if kw.lower() in method_lower:
+              m = method_name.lower()
+              if any(k.lower() in m for k in TRUE_KEYWORDS):
+                  return "TRUE"
+              if any(k.lower() in m for k in FALSE_KEYWORDS):
+                  return "FALSE"
+              if any(k in m for k in ACCESS_KEYWORDS_BROAD):
+                  if any(x in m for x in ["lock", "restrict", "deny", "trial", "expire", "pending", "limit"]):
                       return "FALSE"
-              
-              # Heuristic for generic access keywords
-              for kw in ACCESS_KEYWORDS:
-                  if kw.lower() in method_lower:
-                      # If it contains "lock" or "restrict" in the absence of explicit TRUE keywords, assume FALSE
-                      if ("lock" in method_lower or "restrict" in method_lower or "deny" in method_lower or "trial" in method_lower) and not any(tk.lower() in method_lower for tk in TRUE_KEYWORDS):
-                          return "FALSE"
-                      # Otherwise, assume TRUE
-                      return "TRUE"
-              return "NONE" # No patch needed
+                  return "TRUE"
+              return "NONE"
 
-          patched_methods_count = 0
-          patched_fields_count = 0
-          
-          # Walk through all smali directories
+          patched_methods = 0
+
           for root, dirs, files in os.walk("decompiled_app"):
               if "smali" not in root:
                   continue
               for file in files:
                   if not file.endswith(".smali"):
                       continue
-                  filepath = os.path.join(root, file)
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  
+                  path = os.path.join(root, file)
+                  try:
+                      with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+                  except Exception as e:
+                      print(f"Read error {path}: {e}")
+                      continue
+
                   new_content = content
-                  
-                  # --- Method Patching ---
-                  # This regex captures the entire method from .method to .end method,
-                  # and extracts return type for specific patching.
-                  # Capture Group 1: Full method block
-                  # Capture Group 2: Method modifiers (public, private, static, etc.)
-                  # Capture Group 3: Method name
-                  # Capture Group 4: Parameter signature
-                  # Capture Group 5: Return type (Z, I, Ljava/lang/String;, etc.)
+                  # Method regex: captures full block, name, and return type
                   method_pattern = re.compile(
-                      r'(\.method\s+(?:(public|private|protected|static|final|\s)*)\s*(\w+)\((.*?)?\)(Z|I|Ljava/lang/String;|V|Ljava/lang/Object;)\s*.*?\.end\s+method)',
+                      r'(\.method\s+(?:(public|private|protected|static|final|\s)*)\s*(\w+)\((.*?)?\)(Z|I|J|F|D|L[^;]+;|\[[^;]+;|V)\s*.*?\.end\s+method)',
                       re.DOTALL
                   )
-
-                  for match in method_pattern.finditer(content):
-                      full_method_block = match.group(1)
-                      method_name = match.group(3)
-                      return_type = match.group(5)
-                      
-                      patch_action = get_patch_action(method_name)
-
-                      if patch_action == "NONE":
+                  matches = list(method_pattern.finditer(content))
+                  for m in reversed(matches):
+                      block = m.group(1)
+                      name = m.group(3)
+                      rt = m.group(5)
+                      action = get_patch_action(name)
+                      if action == "NONE":
                           continue
 
-                      # Determine the return instruction based on type and action
-                      return_smali = ""
-                      if return_type == "Z": # Boolean
-                          return_value = "0x1" if patch_action == "TRUE" else "0x0"
-                          return_smali = f"    const/4 v0, {return_value}\n    return v0"
-                      elif return_type == "I": # Integer
-                          # For integers, 1 for true-like, 0 for false-like.
-                          # Could also return a large positive number for "unlocked status code"
-                          return_value = "0x1" if patch_action == "TRUE" else "0x0"
-                          if "getCourseStatus" in method_name or "getUnlockStatus" in method_name:
-                              # Heuristic: if it's a status getter, return a common "unlocked" status code like 1 or 200
-                              return_value = "0x1" # Or 0xc8 for 200
-                          return_smali = f"    const/4 v0, {return_value}\n    return v0"
-                      elif return_type == "Ljava/lang/String;": # String
-                          if patch_action == "TRUE":
-                              # Return an empty string or "unlocked" status string
-                              return_smali = '    const-string v0, "unlocked"\n    return-object v0'
-                          else: # patch_action == "FALSE"
-                              # Return null or "locked" status string
-                              return_smali = '    const/4 v0, 0x0\n    return-object v0'
-                      elif return_type == "V": # Void methods, often perform an action.
-                          # If a void method's name suggests it locks/restricts, we can make it return immediately.
-                          if "lock" in method_name.lower() or "restrict" in method_name.lower() or "block" in method_name.lower():
-                              return_smali = "    return-void"
+                      # Build replacement body
+                      if rt == "Z":
+                          val = "0x1" if action == "TRUE" else "0x0"
+                          body = f"    const/4 v0, {val}\n    return v0"
+                      elif rt == "I":
+                          val = "0x1" if action == "TRUE" else "0x0"
+                          if any(k in name.lower() for k in ["status", "level", "state"]):
+                              val = "0x1" if action == "TRUE" else "0x0"
+                          body = f"    const/4 v0, {val}\n    return v0"
+                      elif rt == "J":
+                          val = "0x1L" if action == "TRUE" else "0x0L"
+                          body = f"    const-wide/16 v0, {val}\n    return-wide v0"
+                      elif rt == "F":
+                          val = "0x3f800000" if action == "TRUE" else "0x0"
+                          body = f"    const/high16 v0, {val}\n    return v0"
+                      elif rt == "D":
+                          val = "0x3ff0000000000000L" if action == "TRUE" else "0x0L"
+                          body = f"    const-wide/16 v0, {val}\n    return-wide v0"
+                      elif rt == "Ljava/lang/String;":
+                          body = '    const-string v0, "FULL_ACCESS"\n    return-object v0' if action == "TRUE" else '    const/4 v0, 0x0\n    return-object v0'
+                      elif rt == "V":
+                          if any(x in name.lower() for x in ["lock", "restrict", "block", "deny", "disable"]):
+                              body = "    return-void"
                           else:
-                              continue # Don't patch other void methods
-                      elif return_type == "Ljava/lang/Object;": # Generic Object return type
-                          # If it's an object that might represent a status or state, try to return null or a dummy object
-                          if patch_action == "TRUE":
-                              # Returning null might cause NullPointerExceptions later.
-                              # A safer approach is to skip or try to return a new instance of a simple object if possible.
-                              # For now, we'll return null for simplicity, as it often means "no restriction object".
-                              return_smali = '    const/4 v0, 0x0\n    return-object v0'
-                          else:
-                              return_smali = '    const/4 v0, 0x0\n    return-object v0'
-                      else: # Other object types, arrays, etc. - complex, skip for now
-                          continue
+                              continue
+                      else:
+                          # For object types we use null
+                          body = '    const/4 v0, 0x0\n    return-object v0'
 
-                      # Build the replacement method body
-                      # We'll replace everything after .registers (or after the method signature)
-                      # with const/4 v0, value and return v0
-                      # Find the line with .registers or the method signature end
-                      lines = full_method_block.split('\n')
-                      new_method_lines = []
+                      # Insert body after .registers (or .locals)
+                      lines = block.split("\n")
+                      new_lines = []
                       inserted = False
                       for i, line in enumerate(lines):
-                          new_method_lines.append(line)
-                          if not inserted and (re.search(r'\.registers\s+\d+', line) or re.search(r'\.locals\s+\d+', line) or (i == 0 and not re.search(r'\.prologue', lines[i+1] if i+1 < len(lines) else ''))):
-                              # Insert after .registers, or .locals, or directly after method signature if no prologue
-                              new_method_lines.append(return_smali)
-                              new_method_lines.append(f"    # Patched: Original method body skipped.")
-                              # Skip the rest of the original method body until .end method
-                              while i + 1 < len(lines) and not lines[i+1].strip().startswith('.end method'):
-                                  i += 1 # Advance index to skip original lines
+                          new_lines.append(line)
+                          if not inserted and re.search(r'\.registers\s+\d+', line):
+                              new_lines.append(body)
                               inserted = True
-                          
                           if inserted and line.strip().startswith('.end method'):
-                              break # Stop appending after .end method
-                      
-                      if not inserted: # Fallback: if no clear injection point, prepend to method body
-                          new_method_lines = lines[:1] + [return_smali, f"    # Patched: Original method body skipped (fallback)."] + lines[1:]
-                          
-                      new_method_block = "\n".join(new_method_lines)
+                              break
+                      if not inserted:
+                          new_lines = lines[:1] + [body, "    # Patched"] + lines[1:]
 
-                      # Replace the original method in content
-                      # Use re.sub with a limit to replace only the current match
-                      new_content = re.sub(re.escape(full_method_block), new_method_block, new_content, 1)
-                      patched_methods_count += 1
+                      new_block = "\n".join(new_lines)
+                      new_content = new_content.replace(block, new_block)
+                      patched_methods += 1
 
-                  # --- Field Patching ---
-                  # Search for fields like "locked" or "premium" and ensure they are initialized to an unlocked state.
-                  # This is more complex than simple regex. We will look for field declarations and try to
-                  # inject code into constructors or static initializers to set these fields to a desired state.
-                  # This is a more robust approach than simply replacing assignments.
+                  if new_content != content:
+                      try:
+                          with open(path, "w", encoding="utf-8") as f:
+                              f.write(new_content)
+                      except Exception as e:
+                          print(f"Write error {path}: {e}")
 
-                  # Find class name
-                  class_name_match = re.search(r'\.class\s+.*?\s+(L[^;]+;)', content)
-                  if not class_name_match:
-                      continue
-                  current_class_full_name = class_name_match.group(1) # e.g., Lcom/example/app/MyClass;
+          print(f"Patched {patched_methods} methods.")
+          EOF
 
-                  # Find relevant boolean, int, or String fields
-                  field_pattern = re.compile(r'\.field\s+(?:public|private|protected|static|final)?\s*(\w+):([ZILjava/lang/String;])')
-                  fields_to_patch = [] # List of (field_name, field_type, patch_action)
+      # --------------------------------------------------------------------
+      # 5. Rebuild & Sign APK
+      # --------------------------------------------------------------------
+      - name: Rebuild Optimized APK
+        run: java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
 
-                  for field_match in field_pattern.finditer(content):
-                      field_name = field_match.group(1)
-                      field_type = field_match.group(2)
-                      
-                      field_lower = field_name.lower()
-                      patch_action = "NONE"
-                      if any(kw in field_lower for kw in ["unlocked", "premium", "paid", "access", "enabled", "active", "purchased", "subscribed", "courseunlocked"]):
-                          patch_action = "TRUE"
-                      elif any(kw in field_lower for kw in ["locked", "restricted", "trial", "expired", "pending", "disabled"]):
-                          patch_action = "FALSE"
-                      
-                      if patch_action != "NONE":
-                          fields_to_patch.append((field_name, field_type, patch_action))
+      - name: Sign APK
+        run: java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
-                  if not fields_to_patch:
-                      continue
-
-                  # Now, inject code into constructors or static initializers to set these fields
-                  # We'll look for .method public constructor <init> and .method static <clinit>
-                  constructor_pattern = re.compile(
-                      r'(\.method\s+(?:public|private|protected)?\s+constructor\s+<init>\(.*?\)V\s*.*?\.end\s+method)',
-                      re.DOTALL
-                  )
-                  clinit_pattern = re.compile(
-                      r'(\.method\s+static\s+<clinit>\(.*?\)V\s*.*?\.end\s+method)',
-                      re.DOTALL
-                  )
-
-                  # Helper to inject field setting code
-                  def inject_field_
+      - name: Upload ShikhoMax APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShikhoMax-Fully-Unlocked-APK
+          path: output_signed/*.apk
