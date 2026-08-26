@@ -60,14 +60,12 @@ jobs:
           with open(manifest_path, "r", encoding="utf-8") as f:
               content = f.read()
 
-          # পুরাতন প্যাকেজ নেম বের করা
           match = re.search(r'package="([^"]+)"', content)
           if match:
               old_pkg = match.group(1)
               print(f"Old Package Name: {old_pkg}")
               new_pkg = "com.shikhomaxfm.app"
               
-              # Manifest-এ প্যাকেজ এবং অথোরিটি পরিবর্তন
               content = content.replace(f'package="{old_pkg}"', f'package="{new_pkg}"')
               content = content.replace(old_pkg, new_pkg)
               
@@ -79,13 +77,11 @@ jobs:
       - name: Update App Logo
         run: |
           if [ -f "app_icon.png" ]; then
-            echo "Replacing App Icons..."
-            find decompiled_app/res/mipmap* -type f -name "ic_launcher*.png" -exec cp -f app_icon.png {} +
-            find decompiled_app/res/drawable* -type f -name "ic_launcher*.png" -exec cp -f app_icon.png {} +
-            find decompiled_app/res/mipmap* -type f -name "ic_launcher*.webp" -exec cp -f app_icon.png {} +
-            find decompiled_app/res/drawable* -type f -name "ic_launcher*.webp" -exec cp -f app_icon.png {} +
+            echo "Replacing App Icons safely..."
+            find decompiled_app/res/ -type f \( -name "ic_launcher*.png" -o -name "ic_launcher*.webp" \) -exec cp -f app_icon.png {} \;
+            echo "App Icons updated successfully."
           else
-            echo "app_icon.png not found in repository root, skipping icon update."
+            echo "app_icon.png not found, skipping."
           fi
 
       - name: Rebuild APK
