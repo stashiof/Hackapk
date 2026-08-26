@@ -36,7 +36,7 @@ jobs:
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
+      - name: Stable Bypass FLAG_SECURE
         run: |
           echo "Patching FLAG_SECURE..."
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
@@ -44,192 +44,171 @@ jobs:
 
       - name: Change App Name to ShikhoMax
         run: |
-          echo "Updating App Name to ShikhoMax..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
 
-      - name: 🚀 Mega Advanced Fix - UI Done Markers + Full Terminal Logging
+      - name: 🔥 Ultimate Fix - Done UI + Toast Logs + Download/Course Fix
         run: |
           python3 - << 'EOF'
-          import os
-          import re
-          import sys
+          import os, re, sys
 
-          print("=== Starting MEGA Advanced Fixes ===")
+          print("=== ULTIMATE FIX STARTED ===")
 
-          # ----- 1. DEBUG MODE ON (ডিবাগ টার্মিনালের জন্য) -----
-          print("\n[1] Enabling debuggable flag in AndroidManifest.xml...")
-          manifest_path = "decompiled_app/AndroidManifest.xml"
-          if os.path.exists(manifest_path):
-              with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  mani = f.read()
-              # debuggable true সেট করা
-              mani = re.sub(r'android:debuggable="false"', 'android:debuggable="true"', mani)
-              if 'android:debuggable="true"' not in mani:
-                  mani = re.sub(r'(<application\s+)', r'\1 android:debuggable="true" ', mani)
-              with open(manifest_path, 'w', encoding='utf-8', errors='ignore') as f:
-                  f.write(mani)
-              print("   ✅ AndroidManifest.xml patched for debuggable=true")
+          # --- 1. Debuggable on ---
+          mani = "decompiled_app/AndroidManifest.xml"
+          with open(mani, 'r', errors='ignore') as f: c = f.read()
+          c = re.sub(r'android:debuggable="false"', 'android:debuggable="true"', c)
+          if 'android:debuggable="true"' not in c:
+              c = re.sub(r'(<application\s+)', r'\1 android:debuggable="true" ', c)
+          with open(mani, 'w') as f: f.write(c)
+          print("✅ AndroidManifest debuggable=true")
 
-          # ----- 2. UI কনফার্মেশন: ডাউনলোড ও কোর্স অপশনে "✅ Done" লেখা -----
-          print("\n[2] Adding UI Confirmation '✅ Done' to Download & Course options...")
+          # --- 2. UI "✅ Done" in ALL languages ---
+          print("\n🖌️ Adding '✅ Done' to Download / Courses / Enroll...")
           for root, dirs, files in os.walk("decompiled_app/res"):
               if "values" in root:
-                  for file in files:
-                      if file == "strings.xml":
-                          path = os.path.join(root, file)
-                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                              content = f.read()
-                          # শুধু পুরো শব্দটিকে রিপ্লেস করা হচ্ছে (কেস সংবেদনশীল)
-                          content = re.sub(r'>Download<', r'>Download ✅ Done<', content, flags=re.IGNORECASE)
-                          content = re.sub(r'>Courses<', r'>Courses ✅ Done<', content, flags=re.IGNORECASE)
-                          content = re.sub(r'>Enroll<', r'>Enroll ✅ Done<', content, flags=re.IGNORECASE)
-                          with open(path, 'w', encoding='utf-8', errors='ignore') as f:
-                              f.write(content)
-                          print(f"   ✅ Patched strings in: {path}")
+                  for f in files:
+                      if f == "strings.xml":
+                          p = os.path.join(root, f)
+                          with open(p, 'r', encoding='utf-8', errors='ignore') as fp:
+                              txt = fp.read()
+                          # কেস সংবেদনশীল রিপ্লেস (শুধু পুরো শব্দ)
+                          txt = re.sub(r'>Download<', r'>Download ✅ Done<', txt, flags=re.IGNORECASE)
+                          txt = re.sub(r'>Courses<', r'>Courses ✅ Done<', txt, flags=re.IGNORECASE)
+                          txt = re.sub(r'>Enroll<', r'>Enroll ✅ Done<', txt, flags=re.IGNORECASE)
+                          txt = re.sub(r'>ভিডিও ডাউনলোড<', r'>ভিডিও ডাউনলোড ✅ সম্পন্ন<', txt)
+                          txt = re.sub(r'>কোর্স<', r'>কোর্স ✅ সম্পন্ন<', txt)
+                          txt = re.sub(r'>এনরোল<', r'>এনরোল ✅ সম্পন্ন<', txt)
+                          with open(p, 'w', encoding='utf-8', errors='ignore') as fp:
+                              fp.write(txt)
+                          print(f"   Patched {p}")
 
-          # ----- 3. ডাউনলোড লিমিট ফিক্স (৩ -> ১০০) -----
-          print("\n[3] Removing Download Limit (3 -> 100)...")
+          # --- 3. Download Limit 3 → 100 ---
+          print("\n📥 Download limit 3→100 ...")
           for root, dirs, files in os.walk("decompiled_app/res/values"):
-              for file in files:
-                  if file == "integers.xml":
-                      path = os.path.join(root, file)
-                      with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                          content = f.read()
-                      content = re.sub(r'>\s*3\s*<', r'>100<', content)
-                      with open(path, 'w', encoding='utf-8', errors='ignore') as f:
-                          f.write(content)
-                      print(f"   Patched integers.xml: {path}")
+              for f in files:
+                  if f == "integers.xml":
+                      p = os.path.join(root, f)
+                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                      c = re.sub(r'>\s*3\s*<', r'>100<', c)
+                      with open(p, 'w') as fp: fp.write(c)
+                      print(f"   Patched {p}")
 
-          download_files = []
           for root, dirs, files in os.walk("decompiled_app/smali"):
-              for file in files:
-                  if "download" in file.lower():
-                      download_files.append(os.path.join(root, file))
-          for path in download_files:
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  content = f.read()
-              content = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', content)
-              content = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', content)
-              with open(path, 'w', encoding='utf-8', errors='ignore') as f:
-                  f.write(content)
-          print(f"   Patched {len(download_files)} download-related smali files.")
+              for f in files:
+                  if "download" in f.lower():
+                      p = os.path.join(root, f)
+                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                      c = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
+                      c = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
+                      with open(p, 'w') as fp: fp.write(c)
+          print("   ✅ Download limit patched.")
 
-          # ----- 4. কোর্স নেভিগেশন ফিক্স (অ্যাডমিশনের লজিক কপি) -----
-          print("\n[4] Fixing Home Screen Course Navigation...")
-          public_path = "decompiled_app/res/values/public.xml"
-          admission_id = None
-          course_id = None
-          if os.path.exists(public_path):
-              with open(public_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  pub_content = f.read()
-              match = re.search(r'<public type="id" name="([^"]*admission[^"]*)" id="(0x[0-9a-f]+)"', pub_content, re.IGNORECASE)
-              if not match:
-                  match = re.search(r'<public type="id" name="([^"]*enroll[^"]*)" id="(0x[0-9a-f]+)"', pub_content, re.IGNORECASE)
-              if match:
-                  admission_id = match.group(2)
-                  print(f"   Found Admission ID: {admission_id}")
-              match = re.search(r'<public type="id" name="([^"]*course[^"]*)" id="(0x[0-9a-f]+)"', pub_content, re.IGNORECASE)
-              if match:
-                  course_id = match.group(2)
-                  print(f"   Found Course ID: {course_id}")
+          # --- 4. Course Navigation Fix (copy Admission logic) ---
+          print("\n🧭 Fixing Course navigation...")
+          pub = "decompiled_app/res/values/public.xml"
+          adm_id = None; crs_id = None
+          if os.path.exists(pub):
+              with open(pub, 'r', errors='ignore') as f:
+                  pubc = f.read()
+              m = re.search(r'<public type="id" name="([^"]*admission[^"]*)" id="(0x[0-9a-f]+)"', pubc, re.I)
+              if not m: m = re.search(r'<public type="id" name="([^"]*enroll[^"]*)" id="(0x[0-9a-f]+)"', pubc, re.I)
+              if m: adm_id = m.group(2); print(f"   Admission ID: {adm_id}")
+              m = re.search(r'<public type="id" name="([^"]*course[^"]*)" id="(0x[0-9a-f]+)"', pubc, re.I)
+              if m: crs_id = m.group(2); print(f"   Course ID: {crs_id}")
 
-          main_activity_files = []
+          # main/home activity খোঁজ
+          main_files = []
           for root, dirs, files in os.walk("decompiled_app/smali"):
-              for file in files:
-                  if "mainactivity" in file.lower() or "homeactivity" in file.lower():
-                      main_activity_files.append(os.path.join(root, file))
-          if not main_activity_files:
+              for f in files:
+                  if "mainactivity" in f.lower() or "homeactivity" in f.lower():
+                      main_files.append(os.path.join(root, f))
+          if not main_files:
               for root, dirs, files in os.walk("decompiled_app/smali"):
-                  for file in files:
-                      if "activity" in file.lower():
-                          main_activity_files.append(os.path.join(root, file))
+                  for f in files:
+                      if "activity" in f.lower():
+                          main_files.append(os.path.join(root, f))
 
-          patched_nav = False
-          for main_path in main_activity_files:
-              if patched_nav: break
-              with open(main_path, 'r', encoding='utf-8', errors='ignore') as f:
+          patched = False
+          for mp in main_files:
+              if patched: break
+              with open(mp, 'r', errors='ignore') as f:
                   lines = f.readlines()
-              new_lines = []
               i = 0
-              admission_block = None
+              adm_block = None
               while i < len(lines):
                   line = lines[i]
-                  if admission_id and admission_id in line:
-                      temp_lines = [line]
-                      j = i + 1
+                  if adm_id and adm_id in line:
+                      tmp = [line]
+                      j = i+1
                       while j < len(lines) and not re.search(r'(const|sget|if-|:cond_|:goto_|return)', lines[j]):
-                          temp_lines.append(lines[j])
-                          j += 1
+                          tmp.append(lines[j]); j+=1
                       if j < len(lines) and (lines[j].strip().startswith(":") or "return" in lines[j]):
-                          temp_lines.append(lines[j])
-                          j += 1
-                      admission_block = "".join(temp_lines)
-                      print(f"   ✅ Captured Admission logic block ({len(temp_lines)} lines).")
+                          tmp.append(lines[j]); j+=1
+                      adm_block = "".join(tmp)
+                      print(f"   ✅ Admission block captured ({len(tmp)} lines)")
                       i = j
                       continue
-                  if course_id and course_id in line:
-                      if admission_block:
-                          lines[i] = admission_block
-                          print(f"   ✅ Replaced Course logic with Admission logic.")
-                          patched_nav = True
-                          break
-                      else:
-                          lines[i] = f"# {course_id} PATCHED (Fallback)\n"
-                          patched_nav = True
-                          break
+                  if crs_id and crs_id in line and adm_block:
+                      lines[i] = adm_block
+                      patched = True
+                      print(f"   ✅ Replaced Course logic with Admission logic in {mp}")
+                      break
                   i += 1
-              if patched_nav:
-                  with open(main_path, 'w', encoding='utf-8', errors='ignore') as f:
-                      f.writelines(lines)
-                  print(f"   ✅ Successfully patched navigation in {main_path}")
+              if patched:
+                  with open(mp, 'w') as f: f.writelines(lines)
 
-          if not patched_nav:
-              print("   ⚠️ Fallback: Applying null-check bypass in Course activities...")
+          if not patched:
+              print("   ⚠️ Fallback: null-check bypass in Course activities...")
               for root, dirs, files in os.walk("decompiled_app/smali"):
-                  for file in files:
-                      if "course" in file.lower() and ("activity" in file.lower() or "detail" in file.lower()):
-                          path = os.path.join(root, file)
-                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                              content = f.read()
-                          content = re.sub(r'(invoke-virtual.*getIntExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const/4 v0, 0x1\n\2if-nez v0,', content)
-                          content = re.sub(r'(invoke-virtual.*getStringExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const-string v0, "default"\n\2if-nez v0,', content)
-                          with open(path, 'w', encoding='utf-8', errors='ignore') as f:
-                              f.write(content)
-                          print(f"   ✅ Applied fallback to {path}")
+                  for f in files:
+                      if "course" in f.lower() and ("activity" in f.lower() or "detail" in f.lower()):
+                          p = os.path.join(root, f)
+                          with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                          c = re.sub(r'(invoke-virtual.*getIntExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const/4 v0, 0x1\n\2if-nez v0,', c)
+                          c = re.sub(r'(invoke-virtual.*getStringExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const-string v0, "default"\n\2if-nez v0,', c)
+                          with open(p, 'w') as fp: fp.write(c)
+                          print(f"   ✅ Fallback applied to {p}")
 
-          # ----- 5. টার্মিনাল লগিং ইনজেক্ট (প্রত্যেক ক্লিকে Logcat দেখাবে) -----
-          print("\n[5] Injecting Terminal Logcat into all click handlers...")
-          injected_count = 0
+          # --- 5. Toast + Log injection in EVERY click handler ---
+          print("\n📢 Injecting Toast & Log into all onClick / onOptionsItemSelected...")
+          injected = 0
           for root, dirs, files in os.walk("decompiled_app/smali"):
-              for file in files:
-                  path = os.path.join(root, file)
-                  with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                      content = f.read()
-                  
-                  # শুধুমাত্র onClick বা onOptionsItemSelected মেথড থাকলেই ইনজেক্ট করব
+              for f in files:
+                  path = os.path.join(root, f)
+                  with open(path, 'r', errors='ignore') as fp:
+                      content = fp.read()
+                  # Check if it has onClick or onOptionsItemSelected
                   if '.method' in content and ('onClick' in content or 'onOptionsItemSelected' in content):
                       lines = content.split('\n')
                       new_lines = []
-                      injected = False
+                      inside = False
+                      method_name = f.replace('.smali', '')
                       for line in lines:
                           new_lines.append(line)
-                          if '.registers' in line and not injected:
-                              match = re.search(r'\.registers\s+(\d+)', line)
-                              if match:
-                                  count = int(match.group(1)) + 2
-                                  new_lines[-1] = f'.registers {count}'
-                              # Log ইনজেক্ট করুন (লগ ট্যাগ "ShikhoMaxDebug")
-                              new_lines.append('    const-string v10, "ShikhoMaxDebug"')
-                              new_lines.append('    const-string v11, "🔥 Clicked: ' + os.path.basename(path).replace('.smali', '') + '"')
-                              new_lines.append('    invoke-static {v10, v11}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I')
-                              injected = True
-                              injected_count += 1
-                      if injected:
-                          with open(path, 'w', encoding='utf-8', errors='ignore') as f:
-                              f.write('\n'.join(new_lines))
-                          print(f'   ✅ Injected log into {os.path.basename(path)}')
+                          if '.method' in line and ('onClick' in line or 'onOptionsItemSelected' in line):
+                              inside = True
+                              # registers count বাড়ানো
+                              reg_match = re.search(r'\.registers\s+(\d+)', line)
+                              if reg_match:
+                                  new_lines[-1] = f'.registers {int(reg_match.group(1)) + 3}'
+                              # Toast ও Log যোগ করি
+                              new_lines.append('    const-string v0, "ShikhoMaxDebug"')
+                              new_lines.append(f'    const-string v1, "🔥 Clicked: {method_name}"')
+                              new_lines.append('    invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I')
+                              new_lines.append('    const-string v0, "ShikhoMax"')
+                              new_lines.append(f'    const-string v1, "Clicked: {method_name}"')
+                              new_lines.append('    const/4 v2, 0x0')
+                              new_lines.append('    invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;')
+                              new_lines.append('    move-result-object v0')
+                              new_lines.append('    invoke-virtual {v0}, Landroid/widget/Toast;->show()V')
+                              injected += 1
+                      if inside:
+                          with open(path, 'w') as fp:
+                              fp.write('\n'.join(new_lines))
+                          print(f'   ✅ Injected into {f}')
 
-          print(f"\n=== All fixes applied! Total {injected_count} click handlers injected with Terminal logs. ===")
+          print(f"\n🎯 Total click handlers injected: {injected}")
+          print("=== ULTIMATE FIX COMPLETE ===")
           EOF
 
       - name: Force Override Adaptive Icons & Compress
