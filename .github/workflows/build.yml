@@ -72,11 +72,9 @@ jobs:
                           p = os.path.join(root, f)
                           with open(p, 'r', encoding='utf-8', errors='ignore') as fp:
                               txt = fp.read()
-                          # ইংরেজি
                           txt = re.sub(r'>Download<', r'>Download ✅ Done<', txt, flags=re.IGNORECASE)
                           txt = re.sub(r'>Courses<', r'>Courses ✅ Done<', txt, flags=re.IGNORECASE)
                           txt = re.sub(r'>Enroll<', r'>Enroll ✅ Done<', txt, flags=re.IGNORECASE)
-                          # বাংলা (এক্সাক্ট ম্যাচ)
                           txt = re.sub(r'>ভিডিও ডাউনলোড<', r'>ভিডিও ডাউনলোড ✅ সম্পন্ন<', txt)
                           txt = re.sub(r'>কোর্স<', r'>কোর্স ✅ সম্পন্ন<', txt)
                           txt = re.sub(r'>এনরোল<', r'>এনরোল ✅ সম্পন্ন<', txt)
@@ -105,21 +103,20 @@ jobs:
                       with open(p, 'w') as fp: fp.write(c)
           print("   ✅ Download limit patched.")
 
-          # --- 4. Safe Fallback for Course (Null-check bypass - stops crash) ---
-          print("\n🧭 Applying safe fallback to Course activities (null-check bypass)...")
+          # --- 4. Safe Fallback for Course (Null-check bypass) ---
+          print("\n🧭 Applying safe fallback to Course activities...")
           for root, dirs, files in os.walk("decompiled_app/smali"):
               for f in files:
                   if "course" in f.lower() and ("activity" in f.lower() or "detail" in f.lower()):
                       p = os.path.join(root, f)
                       with open(p, 'r', errors='ignore') as fp: c = fp.read()
-                      # getIntExtra এর পর if-eqz কে if-nez বানাই (ফোর্সড ভালো পাথে যাবে)
                       c = re.sub(r'(invoke-virtual.*getIntExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const/4 v0, 0x1\n\2if-nez v0,', c)
                       c = re.sub(r'(invoke-virtual.*getStringExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const-string v0, "default"\n\2if-nez v0,', c)
                       with open(p, 'w') as fp: fp.write(c)
                       print(f"   ✅ Fallback applied to {p}")
 
-          # --- 5. Toast + Log injection in click handlers (ইন-অ্যাপ টার্মিনাল) ---
-          print("\n📢 Injecting Toast & Log into all onClick / onOptionsItemSelected...")
+          # --- 5. Toast + Log injection (ইন-অ্যাপ টার্মিনাল) ---
+          print("\n📢 Injecting Toast & Log into click handlers...")
           injected = 0
           for root, dirs, files in os.walk("decompiled_app/smali"):
               for f in files:
@@ -127,7 +124,6 @@ jobs:
                   with open(path, 'r', errors='ignore') as fp:
                       content = fp.read()
                   
-                  # onClick, onMenuItemClick, onOptionsItemSelected মেথড খুঁজি
                   if '.method' in content and ('onClick' in content or 'onOptionsItemSelected' in content or 'onMenuItemClick' in content):
                       lines = content.split('\n')
                       new_lines = []
@@ -137,15 +133,9 @@ jobs:
                           new_lines.append(line)
                           if '.method' in line and ('onClick' in line or 'onOptionsItemSelected' in line or 'onMenuItemClick' in line):
                               inside = True
-                              # registers কাউন্ট বাড়াই (স্মালি সিনট্যাক্স মেইনটেইন)
                               reg_match = re.search(r'\.registers\s+(\d+)', line)
                               if reg_match:
-                                  # ৩টি বাড়ালাম
                                   new_lines[-1] = f'.registers {int(reg_match.group(1)) + 3}'
-                              else:
-                                  # যদি .registers না থাকে, .locals-এর পর বাড়াই
-                                  pass
-                              # Toast + Log ইনজেক্ট
                               new_lines.append('    const-string v0, "ShikhoMaxDebug"')
                               new_lines.append(f'    const-string v1, "🔥 Clicked: {method_name}"')
                               new_lines.append('    invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I')
@@ -161,7 +151,7 @@ jobs:
                               fp.write('\n'.join(new_lines))
                           print(f'   ✅ Injected into {f}')
 
-          print(f"\n🎯 Total click handlers injected with Toast+Log: {injected}")
+          print(f"\n🎯 Total click handlers injected: {injected}")
           print("=== RELIABLE FIX COMPLETE ===")
           EOF
 
@@ -202,7 +192,8 @@ jobs:
 
       - name: Rebuild Optimized APK
         run: |
-          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
+          # --use-aapt2 ফ্ল্যাগটি বাদ দেওয়া হয়েছে (ডিফল্ট বিল্ডার ব্যবহার করবে, যা বেশি স্থিতিশীল)
+          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
 
       - name: Sign APK
         run: |
@@ -214,22 +205,22 @@ jobs:
           name: ShikhoMax-Stable-APK
           path: output_signed/*.apk
 
-      # ========== নতুন স্টেপ: ডিকম্পাইলড সোর্স আপলোড ==========
+      # ========== ডিকম্পাইলড সোর্স আপলোড (আপনার বিশ্লেষণের জন্য) ==========
       - name: 📦 Generate & Upload Decompiled Source (Smali + Java)
         run: |
-          echo "📥 Downloading jadx for Java-like decompilation..."
+          echo "📥 Downloading jadx..."
           wget -O jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip
-          unzip jadx.zip -d jadx
+          unzip -o jadx.zip -d jadx
           chmod +x jadx/bin/jadx
 
-          echo "📁 Zipping original Smali code..."
+          echo "📁 Zipping Smali code..."
           zip -r decompiled_smali.zip decompiled_app/smali/
 
-          echo "☕ Generating Java-like source code with jadx..."
+          echo "☕ Generating Java-like source code..."
           ./jadx/bin/jadx -d decompiled_java_source decompiled_app/ --show-bad-code
           zip -r decompiled_java_source.zip decompiled_java_source/
 
-          echo "✅ Source code zipped successfully!"
+          echo "✅ Source code zipped!"
 
       - name: Upload Decompiled Source as Artifact
         uses: actions/upload-artifact@v4
