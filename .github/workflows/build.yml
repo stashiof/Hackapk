@@ -1,4 +1,4 @@
-name: Build ShikhoMax Stable
+name: Decompile & Extract Source
 
 on:
   workflow_dispatch:
@@ -17,9 +17,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Download Tools & Setup
+      - name: Install Tools
         run: |
-          pip install gdown pillow
+          pip install gdown
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
@@ -36,196 +36,36 @@ jobs:
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
+      - name: Generate Java-like source with jadx
         run: |
-          echo "Patching FLAG_SECURE..."
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
+          wget -O jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip
+          unzip -o jadx.zip -d jadx
+          chmod +x jadx/bin/jadx
+          ./jadx/bin/jadx -d java_source decompiled_app/ --show-bad-code
 
-      - name: Change App Name to ShikhoMax
+      - name: Zip decompiled source
         run: |
-          echo "Updating App Name to ShikhoMax..."
-          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+          zip -r smali_code.zip decompiled_app/smali/
+          zip -r java_source.zip java_source/
 
-      - name: 🔥 RELIABLE FIX (UI Done + Download Limit + Toast Log)
+      - name: Upload decompiled source as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Decompiled-Source
+          path: |
+            smali_code.zip
+            java_source.zip
+
+      - name: Rebuild APK (no patches)
         run: |
-          python3 - << 'EOF'
-          import os, re, sys
-
-          print("=== RELIABLE FIX STARTED ===")
-
-          # --- 1. Debuggable on ---
-          mani = "decompiled_app/AndroidManifest.xml"
-          with open(mani, 'r', errors='ignore') as f: c = f.read()
-          c = re.sub(r'android:debuggable="false"', 'android:debuggable="true"', c)
-          if 'android:debuggable="true"' not in c:
-              c = re.sub(r'(<application\s+)', r'\1 android:debuggable="true" ', c)
-          with open(mani, 'w') as f: f.write(c)
-          print("✅ AndroidManifest debuggable=true")
-
-          # --- 2. UI "✅ Done" in ALL languages (ইংরেজি + বাংলা) ---
-          print("\n🖌️ Adding '✅ Done' to Download / Courses / Enroll...")
-          for root, dirs, files in os.walk("decompiled_app/res"):
-              if "values" in root:
-                  for f in files:
-                      if f == "strings.xml":
-                          p = os.path.join(root, f)
-                          with open(p, 'r', encoding='utf-8', errors='ignore') as fp:
-                              txt = fp.read()
-                          txt = re.sub(r'>Download<', r'>Download ✅ Done<', txt, flags=re.IGNORECASE)
-                          txt = re.sub(r'>Courses<', r'>Courses ✅ Done<', txt, flags=re.IGNORECASE)
-                          txt = re.sub(r'>Enroll<', r'>Enroll ✅ Done<', txt, flags=re.IGNORECASE)
-                          txt = re.sub(r'>ভিডিও ডাউনলোড<', r'>ভিডিও ডাউনলোড ✅ সম্পন্ন<', txt)
-                          txt = re.sub(r'>কোর্স<', r'>কোর্স ✅ সম্পন্ন<', txt)
-                          txt = re.sub(r'>এনরোল<', r'>এনরোল ✅ সম্পন্ন<', txt)
-                          with open(p, 'w', encoding='utf-8', errors='ignore') as fp:
-                              fp.write(txt)
-                          print(f"   Patched {p}")
-
-          # --- 3. Download Limit 3 → 100 ---
-          print("\n📥 Download limit 3→100 ...")
-          for root, dirs, files in os.walk("decompiled_app/res/values"):
-              for f in files:
-                  if f == "integers.xml":
-                      p = os.path.join(root, f)
-                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
-                      c = re.sub(r'>\s*3\s*<', r'>100<', c)
-                      with open(p, 'w') as fp: fp.write(c)
-                      print(f"   Patched {p}")
-
-          for root, dirs, files in os.walk("decompiled_app/smali"):
-              for f in files:
-                  if "download" in f.lower():
-                      p = os.path.join(root, f)
-                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
-                      c = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
-                      c = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
-                      with open(p, 'w') as fp: fp.write(c)
-          print("   ✅ Download limit patched.")
-
-          # --- 4. Safe Fallback for Course (Null-check bypass) ---
-          print("\n🧭 Applying safe fallback to Course activities...")
-          for root, dirs, files in os.walk("decompiled_app/smali"):
-              for f in files:
-                  if "course" in f.lower() and ("activity" in f.lower() or "detail" in f.lower()):
-                      p = os.path.join(root, f)
-                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
-                      c = re.sub(r'(invoke-virtual.*getIntExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const/4 v0, 0x1\n\2if-nez v0,', c)
-                      c = re.sub(r'(invoke-virtual.*getStringExtra.*)\n(\s*)(if-eqz\s+v[0-9]+,)', r'\1\n\2const-string v0, "default"\n\2if-nez v0,', c)
-                      with open(p, 'w') as fp: fp.write(c)
-                      print(f"   ✅ Fallback applied to {p}")
-
-          # --- 5. Toast + Log injection (ইন-অ্যাপ টার্মিনাল) ---
-          print("\n📢 Injecting Toast & Log into click handlers...")
-          injected = 0
-          for root, dirs, files in os.walk("decompiled_app/smali"):
-              for f in files:
-                  path = os.path.join(root, f)
-                  with open(path, 'r', errors='ignore') as fp:
-                      content = fp.read()
-                  
-                  if '.method' in content and ('onClick' in content or 'onOptionsItemSelected' in content or 'onMenuItemClick' in content):
-                      lines = content.split('\n')
-                      new_lines = []
-                      inside = False
-                      method_name = f.replace('.smali', '')
-                      for line in lines:
-                          new_lines.append(line)
-                          if '.method' in line and ('onClick' in line or 'onOptionsItemSelected' in line or 'onMenuItemClick' in line):
-                              inside = True
-                              reg_match = re.search(r'\.registers\s+(\d+)', line)
-                              if reg_match:
-                                  new_lines[-1] = f'.registers {int(reg_match.group(1)) + 3}'
-                              new_lines.append('    const-string v0, "ShikhoMaxDebug"')
-                              new_lines.append(f'    const-string v1, "🔥 Clicked: {method_name}"')
-                              new_lines.append('    invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I')
-                              new_lines.append('    const-string v0, "ShikhoMax"')
-                              new_lines.append(f'    const-string v1, "Clicked: {method_name}"')
-                              new_lines.append('    const/4 v2, 0x0')
-                              new_lines.append('    invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;')
-                              new_lines.append('    move-result-object v0')
-                              new_lines.append('    invoke-virtual {v0}, Landroid/widget/Toast;->show()V')
-                              injected += 1
-                      if inside:
-                          with open(path, 'w') as fp:
-                              fp.write('\n'.join(new_lines))
-                          print(f'   ✅ Injected into {f}')
-
-          print(f"\n🎯 Total click handlers injected: {injected}")
-          print("=== RELIABLE FIX COMPLETE ===")
-          EOF
-
-      - name: Force Override Adaptive Icons & Compress
-        run: |
-          python3 - << 'EOF'
-          import os
-          from PIL import Image
-
-          icon_src = "app_icon.png"
-          if not os.path.exists(icon_src):
-              print("app_icon.png not found! Skipping icon change.")
-              exit(0)
-
-          for root, dirs, files in os.walk("decompiled_app/res"):
-              if "anydpi" in root:
-                  for f in files:
-                      if "ic_launcher" in f and f.endswith(".xml"):
-                          os.remove(os.path.join(root, f))
-                          print(f"Removed adaptive XML: {f}")
-
-          orig = Image.open(icon_src).convert("RGBA")
-          sizes = {
-              "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
-              "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
-              "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
-          }
-
-          for folder, size in sizes.items():
-              dir_path = os.path.join("decompiled_app/res", folder)
-              if os.path.exists(dir_path):
-                  resized = orig.resize(size, Image.Resampling.LANCZOS)
-                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
-                      out_file = os.path.join(dir_path, name)
-                      resized.save(out_file, format="PNG", optimize=True)
-          print("All launcher icons replaced!")
-          EOF
-
-      - name: Rebuild Optimized APK
-        run: |
-          # --use-aapt2 ফ্ল্যাগটি বাদ দেওয়া হয়েছে (ডিফল্ট বিল্ডার ব্যবহার করবে, যা বেশি স্থিতিশীল)
           java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
 
       - name: Sign APK
         run: |
           java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
-      - name: Upload ShikhoMax APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-Stable-APK
+          name: ShikhoMax-APK
           path: output_signed/*.apk
-
-      # ========== ডিকম্পাইলড সোর্স আপলোড (আপনার বিশ্লেষণের জন্য) ==========
-      - name: 📦 Generate & Upload Decompiled Source (Smali + Java)
-        run: |
-          echo "📥 Downloading jadx..."
-          wget -O jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip
-          unzip -o jadx.zip -d jadx
-          chmod +x jadx/bin/jadx
-
-          echo "📁 Zipping Smali code..."
-          zip -r decompiled_smali.zip decompiled_app/smali/
-
-          echo "☕ Generating Java-like source code..."
-          ./jadx/bin/jadx -d decompiled_java_source decompiled_app/ --show-bad-code
-          zip -r decompiled_java_source.zip decompiled_java_source/
-
-          echo "✅ Source code zipped!"
-
-      - name: Upload Decompiled Source as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShikhoMax-Decompiled-Source
-          path: |
-            decompiled_smali.zip
-            decompiled_java_source.zip
