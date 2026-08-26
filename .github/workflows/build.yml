@@ -22,8 +22,9 @@ jobs:
           pip install gdown
           # APKEditor ডাউনলোড
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          # Apktool ডাউনলোড
-          wget -O apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
+          # ⬇️⬇️ সংশোধিত এবং কাজ করে এমন Apktool ডাউনলোড লিংক ⬇️⬇️
+          wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
+          # ⬆️⬆️ ⬆️⬆️
           # APK Signer ডাউনলোড
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
