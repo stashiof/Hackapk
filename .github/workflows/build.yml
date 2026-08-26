@@ -1,7 +1,7 @@
-name: Convert APKS to Universal APK
+name: Convert APKS and Enable Screenshots
 
 on:
-  workflow_dispatch: # এটি রাখলে গিটহাব থেকে ম্যানুয়ালি রান করা যায়
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,28 +20,45 @@ jobs:
       - name: Download Tools & Setup
         run: |
           pip install gdown
-          # APKEditor ডাউনলোড (যা স্প্লিট এপিকে মার্জ করে)
+          # APKEditor ডাউনলোড
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
+          # Apktool ডাউনলোড
+          wget -O apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
           # APK Signer ডাউনলোড
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
       - name: Download APKS from Google Drive
         run: |
           gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
-          ls -lh
 
       - name: Merge to Single Universal APK
         run: |
-          # APKs ফাইলটিকে মার্জ করে সিঙ্গেল APK তৈরি
-          java -jar APKEditor.jar m -i my_app.apks -o merged_unsigned.apk
+          java -jar APKEditor.jar m -i my_app.apks -o merged.apk
 
-      - name: Sign the APK
+      - name: Decompile APK
         run: |
-          # APK সাইন করা (যাতে ফোনে ইনস্টল করা যায়)
-          java -jar uber-apk-signer.jar --apks merged_unsigned.apk -o output_signed/
+          java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Upload Universal APK
+      - name: Bypass FLAG_SECURE (Enable Screenshots)
+        run: |
+          echo "Patching FLAG_SECURE references..."
+          # FLAG_SECURE এর হেক্স মান 0x2000 বা ডেসিমাল 8192 কে 0x0 দিয়ে প্রতিস্থাপন
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/const\/16 [vp][0-9]*, 0x2000/const\/16 v0, 0x0/g' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/const [vp][0-9]*, 0x2000/const\/4 v0, 0x0/g' {} +
+          # setFlags মেথডে FLAG_SECURE কল নিষ্ক্রিয় করা
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/# disabled_setFlags/g' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/# disabled_addFlags/g' {} +
+
+      - name: Rebuild APK
+        run: |
+          java -jar apktool.jar b decompiled_app -o patched_unsigned.apk --use-aapt2
+
+      - name: Sign the Patched APK
+        run: |
+          java -jar uber-apk-signer.jar --apks patched_unsigned.apk -o output_signed/
+
+      - name: Upload Patched Universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: Universal-APK-Result
+          name: Patched-Screenshot-Enabled-APK
           path: output_signed/*.apk
