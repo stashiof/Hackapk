@@ -1,4 +1,4 @@
-name: Rebrand to ShikhoMax and Patch Build
+name: Build ShikhoMax Stable
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
         run: |
           gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
 
-      - name: Merge to Single Universal APK
+      - name: Merge to Universal APK
         run: |
           java -jar APKEditor.jar m -i my_app.apks -o merged.apk
 
@@ -38,7 +38,7 @@ jobs:
 
       - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
         run: |
-          echo "Applying stable patch for FLAG_SECURE..."
+          echo "Patching FLAG_SECURE..."
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
 
@@ -47,44 +47,11 @@ jobs:
           echo "Updating App Name to ShikhoMax..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
 
-      - name: Safe Package Name & Authority Update
-        run: |
-          python3 - << 'EOF'
-          import re
-
-          manifest_file = "decompiled_app/AndroidManifest.xml"
-          with open(manifest_file, "r", encoding="utf-8") as f:
-              xml = f.read()
-
-          match = re.search(r'package="([^"]+)"', xml)
-          if match:
-              old_pkg = match.group(1)
-              new_pkg = "com.shikhomaxfm.app"
-              print(f"Targeting: {old_pkg} -> {new_pkg}")
-
-              # ডট দিয়ে শুরু হওয়া রিলেটিভ ক্লাস নামগুলোকে ফুল-ক্লাস পাথে কনভার্ট করা (ক্র্যাশ রোধ করতে)
-              def fix_component_names(tag, text):
-                  pattern = rf'(<{tag}[^>]*?android:name=")(\.[^"]+)(")'
-                  return re.sub(pattern, rf'\g<1>{old_pkg}\g<2>\g<3>', text)
-
-              for tag in ['activity', 'service', 'receiver', 'provider']:
-                  xml = fix_component_names(tag, xml)
-
-              # প্যাকেজ আইডি এবং অথোরিটি পরিবর্তন
-              xml = re.sub(r'package="[^"]+"', f'package="{new_pkg}"', xml, count=1)
-              xml = xml.replace(f'android:authorities="{old_pkg}', f'android:authorities="{new_pkg}')
-              xml = xml.replace(f'{old_pkg}.provider', f'{new_pkg}.provider')
-              xml = xml.replace(f'{old_pkg}.fileprovider', f'{new_pkg}.fileprovider')
-
-              with open(manifest_file, "w", encoding="utf-8") as f:
-                  f.write(xml)
-              print("AndroidManifest safely updated without breaking class references!")
-          EOF
-
-      - name: Optimize & Replace App Icons
+      - name: Force Override Adaptive Icons & Compress
         run: |
           python3 - << 'EOF'
           import os
+          import shutil
           from PIL import Image
 
           icon_src = "app_icon.png"
@@ -92,53 +59,46 @@ jobs:
               print("app_icon.png not found!")
               exit(0)
 
-          # বড় ইমেজকে অপটিমাইজ ও কম্প্রেস করা (20-30 KB কোয়ালিটি)
-          orig_img = Image.open(icon_src).convert("RGBA")
+          # অ্যাডাপ্টিভ আইকন এক্সএমএল রিমুভ করা যাতে ফোর্সফুলি নতুন PNG শো করে
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              if "anydpi" in root:
+                  for f in files:
+                      if "ic_launcher" in f and f.endswith(".xml"):
+                          os.remove(os.path.join(root, f))
+                          print(f"Removed adaptive XML: {f}")
 
-          # সব mipmap ও drawable ফোল্ডারে নির্দিষ্ট সাইজে রিসাইজ করে বসানো
-          res_dir = "decompiled_app/res"
-          size_map = {
-              "mdpi": (48, 48),
-              "hdpi": (72, 72),
-              "xhdpi": (96, 96),
-              "xxhdpi": (144, 144),
-              "xxxhdpi": (192, 192)
+          # ইমেজ অপটিমাইজেশন (২০-৩০ কেবি এবং হাই কোয়ালিটি)
+          orig = Image.open(icon_src).convert("RGBA")
+          
+          sizes = {
+              "mipmap-mdpi": (48, 48),
+              "mipmap-hdpi": (72, 72),
+              "mipmap-xhdpi": (96, 96),
+              "mipmap-xxhdpi": (144, 144),
+              "mipmap-xxxhdpi": (192, 192),
+              "drawable": (192, 192)
           }
 
-          replaced = 0
-          for root, dirs, files in os.walk(res_dir):
-              folder_name = os.path.basename(root)
-              for file in files:
-                  name_lower = file.lower()
-                  # আইকন বা লঞ্চার ফাইল ডিটেক্ট করা
-                  if ("ic_launcher" in name_lower or "icon" in name_lower or "logo" in name_lower) and (file.endswith(".png") or file.endswith(".webp")):
-                      target_path = os.path.join(root, file)
-                      
-                      # ফোল্ডারের ডেনসিটি অনুযায়ী পারফেক্ট সাইজ নির্ধারণ
-                      target_size = (192, 192) # ডিফল্ট
-                      for density, dims in size_map.items():
-                          if density in folder_name:
-                              target_size = dims
-                              break
-                      
-                      # রিসাইজ এবং সেভ
-                      resized_img = orig_img.resize(target_size, Image.Resampling.LANCZOS)
-                      resized_img.save(target_path, format="PNG", optimize=True)
-                      replaced += 1
-
-          print(f"Total {replaced} icons optimized and replaced with high clarity and low size!")
+          for folder, size in sizes.items():
+              dir_path = os.path.join("decompiled_app/res", folder)
+              if os.path.exists(dir_path):
+                  resized = orig.resize(size, Image.Resampling.LANCZOS)
+                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                      out_file = os.path.join(dir_path, name)
+                      resized.save(out_file, format="PNG", optimize=True)
+          print("All launcher icons fully replaced and optimized!")
           EOF
 
-      - name: Rebuild APK
+      - name: Rebuild Optimized APK
         run: |
           java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
 
-      - name: Sign Rebranded APK
+      - name: Sign APK
         run: |
           java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
       - name: Upload ShikhoMax APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-Universal-APK
+          name: ShikhoMax-Stable-APK
           path: output_signed/*.apk
