@@ -1,4 +1,4 @@
-name: ShikhoMax Advanced Debug Preview
+name: ShikhoMax Debug Preview
 
 on:
   workflow_dispatch:
@@ -17,14 +17,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Download Tools & Setup
+      - name: Download Tools
         run: |
           pip install gdown
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
-      - name: Download APKS from Google Drive
+      - name: Download APKS
         run: |
           gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
 
@@ -36,14 +36,14 @@ jobs:
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: 🧠 Inject Smart Debug Logger (Activity + Click + Network)
+      - name: Inject Smart Logger (Safe Method)
         run: |
-          python3 - << 'EOF'
-          import os, re, json, time
+          cat > inject_logger.py << 'EOF'
+          import os, re
 
-          print("=== INJECTING SMART DEBUG LOGGER ===")
+          print("=== INJECTING SMART LOGGER ===")
 
-          # 1. Manifest: debuggable + NOTIFICATION permission
+          # Manifest fix
           mani = "decompiled_app/AndroidManifest.xml"
           with open(mani, 'r', errors='ignore') as f:
               c = f.read()
@@ -54,15 +54,15 @@ jobs:
               c = re.sub(r'(<application\s+)', r'<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    \1', c)
           with open(mani, 'w') as f:
               f.write(c)
-          print("✅ Manifest: debuggable + notification permission")
+          print("✅ Manifest patched")
 
-          # 2. Smart Logger utility class তৈরি (Smali)
-          log_util = '''
+          # Logger class
+          log_smali = '''
           .class public final Lcom/shikhomax/DebugLogger;
           .super Ljava/lang/Object;
-          
+
           .method public static log(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V
-              .locals 3
+              .locals 4
               const-string v0, "ShikhoMaxDebug"
               new-instance v1, Ljava/lang/StringBuilder;
               invoke-direct {v1}, Ljava/lang/StringBuilder;-><init>()V
@@ -78,35 +78,35 @@ jobs:
               invoke-virtual {v1}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
               move-result-object v1
               invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
-              
-              # Notification show
+
               new-instance v0, Landroid/app/NotificationChannel;
-              const-string v1, "debug_channel"
+              const-string v1, "debug_ch"
               const-string v2, "Debug Logs"
               const/4 v3, 0x4
               invoke-direct {v0, v1, v2, v3}, Landroid/app/NotificationChannel;-><init>(Ljava/lang/String;Ljava/lang/CharSequence;I)V
-              const-string v1, "debug_channel"
+              const-string v1, "debug_ch"
               invoke-static {p0, v1}, Landroidx/core/app/NotificationManagerCompat;->from(Landroid/content/Context;)Landroidx/core/app/NotificationManagerCompat;
               move-result-object v1
               invoke-virtual {v1, v0}, Landroidx/core/app/NotificationManagerCompat;->createNotificationChannel(Landroid/app/NotificationChannel;)V
-              
+
               new-instance v0, Landroidx/core/app/NotificationCompat$Builder;
-              const-string v1, "debug_channel"
+              const-string v1, "debug_ch"
               invoke-direct {v0, p0, v1}, Landroidx/core/app/NotificationCompat$Builder;-><init>(Landroid/content/Context;Ljava/lang/String;)V
               const v1, 0x7f0800b0
               invoke-virtual {v0, v1}, Landroidx/core/app/NotificationCompat$Builder;->setSmallIcon(I)Landroidx/core/app/NotificationCompat$Builder;
               const-string v1, "ShikhoMax Debug"
               invoke-virtual {v0, v1}, Landroidx/core/app/NotificationCompat$Builder;->setContentTitle(Ljava/lang/CharSequence;)Landroidx/core/app/NotificationCompat$Builder;
-              invoke-virtual {v0, p1}, Landroidx/core/app/NotificationCompat$Builder;->setContentText(Ljava/lang/CharSequence;)Landroidx/core/app/NotificationCompat$Builder;
               new-instance v1, Ljava/lang/StringBuilder;
               invoke-direct {v1}, Ljava/lang/StringBuilder;-><init>()V
+              const-string v2, "Event: "
+              invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
               invoke-virtual {v1, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-              const-string v2, "\\n"
+              const-string v2, "\n"
               invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
               invoke-virtual {v1, p2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
               invoke-virtual {v1}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
               move-result-object v1
-              invoke-virtual {v0, v1}, Landroidx/core/app/NotificationCompat$Builder;->setStyle(Landroid/app/Notification$Style;)Landroidx/core/app/NotificationCompat$Builder;
+              invoke-virtual {v0, v1}, Landroidx/core/app/NotificationCompat$Builder;->setContentText(Ljava/lang/CharSequence;)Landroidx/core/app/NotificationCompat$Builder;
               const/4 v1, 0x1
               invoke-virtual {v0, v1}, Landroidx/core/app/NotificationCompat$Builder;->setAutoCancel(Z)Landroidx/core/app/NotificationCompat$Builder;
               invoke-virtual {v0}, Landroidx/core/app/NotificationCompat$Builder;->build()Landroid/app/Notification;
@@ -117,11 +117,14 @@ jobs:
           .end method
           '''
 
-          # 3. সব smali ফাইলে logger inject
-          injected_activities = 0
-          injected_clicks = 0
-          injected_network = 0
+          os.makedirs("decompiled_app/smali/com/shikhomax", exist_ok=True)
+          with open("decompiled_app/smali/com/shikhomax/DebugLogger.smali", "w") as f:
+              f.write(log_smali)
+          print("✅ DebugLogger.smali created")
 
+          # Inject into Activities & Clicks
+          total_act = 0
+          total_clk = 0
           for root, dirs, files in os.walk("decompiled_app/smali"):
               for file in files:
                   if not file.endswith(".smali"):
@@ -135,7 +138,6 @@ jobs:
 
                   # Activity onCreate
                   if '.method onCreate' in content and '(Landroid/os/Bundle;)V' in content:
-                      # .registers / .locals বাড়াই
                       if '.registers' in content:
                           content = re.sub(r'(\.registers\s+)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2))+3}', content)
                       elif '.locals' in content:
@@ -144,25 +146,24 @@ jobs:
                           content = re.sub(r'(.method onCreate.*\n)', r'\1    .locals 3\n', content)
 
                       log_code = f'''    const-string v0, "Activity Open"
-          new-instance v1, Ljava/lang/StringBuilder;
-          invoke-direct {{v1}}, Ljava/lang/StringBuilder;-><init>()V
-          const-string v2, "{class_name} | "
-          invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-          invoke-virtual {{p0}}, Landroid/app/Activity;->getIntent()Landroid/content/Intent;
-          move-result-object v2
-          invoke-virtual {{v2}}, Landroid/content/Intent;->getExtras()Landroid/os/Bundle;
-          move-result-object v2
-          invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/Object;)Ljava/lang/StringBuilder;
-          invoke-virtual {{v1}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-          move-result-object v1
-          invoke-static {{p0, v0, v1}}, Lcom/shikhomax/DebugLogger;->log(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V
-      '''
+                      new-instance v1, Ljava/lang/StringBuilder;
+                      invoke-direct {{v1}}, Ljava/lang/StringBuilder;-><init>()V
+                      const-string v2, "{class_name} | "
+                      invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+                      invoke-virtual {{p0}}, Landroid/app/Activity;->getIntent()Landroid/content/Intent;
+                      move-result-object v2
+                      invoke-virtual {{v2}}, Landroid/content/Intent;->getExtras()Landroid/os/Bundle;
+                      move-result-object v2
+                      invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+                      invoke-virtual {{v1}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+                      move-result-object v1
+                      invoke-static {{p0, v0, v1}}, Lcom/shikhomax/DebugLogger;->log(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V
+                  '''
                       if 'invoke-super' in content:
                           parts = content.split('invoke-super', 1)
                           content = parts[0] + log_code + 'invoke-super' + parts[1]
                           modified = True
-                          injected_activities += 1
-                          print(f"   ✅ Activity: {file}")
+                          total_act += 1
 
                   # onClick / onOptionsItemSelected
                   if '.method onClick' in content or '.method onOptionsItemSelected' in content:
@@ -174,44 +175,60 @@ jobs:
                           content = re.sub(r'(.method (onClick|onOptionsItemSelected).*\n)', r'\1    .locals 3\n', content)
 
                       click_log = f'''    const-string v0, "Click"
-          new-instance v1, Ljava/lang/StringBuilder;
-          invoke-direct {{v1}}, Ljava/lang/StringBuilder;-><init>()V
-          const-string v2, "{class_name} | "
-          invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-          const-string v2, "View ID: "
-          invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-          invoke-virtual {{p0}}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
-          move-result-object v2
-          invoke-virtual {{v2}}, Ljava/lang/Class;->getSimpleName()Ljava/lang/String;
-          move-result-object v2
-          invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-          invoke-virtual {{v1}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-          move-result-object v1
-          invoke-static {{p0, v0, v1}}, Lcom/shikhomax/DebugLogger;->log(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V
-      '''
+                      new-instance v1, Ljava/lang/StringBuilder;
+                      invoke-direct {{v1}}, Ljava/lang/StringBuilder;-><init>()V
+                      const-string v2, "{class_name} | "
+                      invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+                      const-string v2, "View ID: "
+                      invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+                      invoke-virtual {{p0}}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
+                      move-result-object v2
+                      invoke-virtual {{v2}}, Ljava/lang/Class;->getSimpleName()Ljava/lang/String;
+                      move-result-object v2
+                      invoke-virtual {{v1, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+                      invoke-virtual {{v1}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+                      move-result-object v1
+                      invoke-static {{p0, v0, v1}}, Lcom/shikhomax/DebugLogger;->log(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V
+                  '''
                       method_start = re.search(r'.method (onClick|onOptionsItemSelected).*\n', content)
                       if method_start:
                           pos = method_start.end()
                           content = content[:pos] + click_log + content[pos:]
                           modified = True
-                          injected_clicks += 1
-                          print(f"   ✅ Click: {file}")
+                          total_clk += 1
 
                   if modified:
                       with open(path, 'w') as f:
                           f.write(content)
 
-          # 4. DebugLogger class add
-          logger_dir = "decompiled_app/smali/com/shikhomax"
-          os.makedirs(logger_dir, exist_ok=True)
-          with open(os.path.join(logger_dir, "DebugLogger.smali"), 'w') as f:
-              f.write(log_util)
-          print("✅ DebugLogger.smali created")
-
-          print(f"\n🎯 Injected Activities: {injected_activities}, Clicks: {injected_clicks}")
+          print(f"✅ Injected Activities: {total_act}, Clicks: {total_clk}")
           EOF
 
-      - name: Rebuild Optimized APK
+          python3 inject_logger.py
+
+      - name: Fix Download Limit (3 -> 100)
+        run: |
+          python3 - << 'EOF'
+          import os, re
+          for root, dirs, files in os.walk("decompiled_app/res/values"):
+              for f in files:
+                  if f == "integers.xml":
+                      p = os.path.join(root, f)
+                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                      c = re.sub(r'>\s*3\s*<', r'>100<', c)
+                      with open(p, 'w') as fp: fp.write(c)
+          for root, dirs, files in os.walk("decompiled_app/smali"):
+              for f in files:
+                  if "download" in f.lower():
+                      p = os.path.join(root, f)
+                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                      c = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
+                      c = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
+                      with open(p, 'w') as fp: fp.write(c)
+          print("✅ Download limit 3->100 patched")
+          EOF
+
+      - name: Rebuild APK
         run: |
           java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
 
@@ -219,7 +236,7 @@ jobs:
         run: |
           java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
-      - name: Upload ShikhoMax APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ShikhoMax-Debug-Preview
