@@ -1,4 +1,4 @@
-name: Decompile & Extract Source
+name: ShikhoMax Phone-Logger Build
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Tools
+      - name: Download Tools & Setup
         run: |
           pip install gdown
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
@@ -36,27 +36,234 @@ jobs:
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Generate Java-like source with jadx
+      - name: 🔥 Inject Phone Toast Logger (স্ক্রিনে পপআপ দেখাবে)
         run: |
-          wget -O jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip
-          unzip -o jadx.zip -d jadx
-          chmod +x jadx/bin/jadx
-          ./jadx/bin/jadx -d java_source decompiled_app/ --show-bad-code
+          python3 - << 'EOF'
+          import os, re, sys
 
-      - name: Zip decompiled source
+          print("=== INJECTING PHONE TOAST LOGGER ===")
+
+          # Manifest এ Debuggable true
+          mani = "decompiled_app/AndroidManifest.xml"
+          with open(mani, 'r', errors='ignore') as f: c = f.read()
+          c = re.sub(r'android:debuggable="false"', 'android:debuggable="true"', c)
+          if 'android:debuggable="true"' not in c:
+              c = re.sub(r'(<application\s+)', r'\1 android:debuggable="true" ', c)
+          with open(mani, 'w') as f: f.write(c)
+          print("✅ Debuggable Enabled")
+
+          injected_activities = 0
+          injected_clicks = 0
+
+          # সব smali ফাইল ঘুরে দেখি
+          for root, dirs, files in os.walk("decompiled_app/smali"):
+              for file in files:
+                  if not file.endswith(".smali"):
+                      continue
+                  path = os.path.join(root, file)
+                  
+                  with open(path, 'r', errors='ignore') as f:
+                      lines = f.readlines()
+                  
+                  # ক্লাসটি Activity কিনা চেক করি (সুপার ক্লাস দেখে)
+                  is_activity = False
+                  for line in lines:
+                      if '.super' in line and ('Landroid/app/Activity;' in line or 'Landroidx/appcompat/app/AppCompatActivity;' in line):
+                          is_activity = True
+                          break
+                  
+                  new_lines = []
+                  i = 0
+                  modified = False
+                  
+                  while i < len(lines):
+                      line = lines[i]
+                      new_lines.append(line)
+                      
+                      # ----- 1. যদি Activity হয়, তাহলে onCreate এ Toast ইনজেক্ট করি -----
+                      if is_activity and '.method onCreate' in line and '(Landroid/os/Bundle;)V' in line:
+                          # .registers / .locals খুঁজে বাড়াই
+                          reg_found = False
+                          for j in range(i, min(i+15, len(lines))):
+                              if '.registers' in lines[j]:
+                                  match = re.search(r'\.registers\s+(\d+)', lines[j])
+                                  if match:
+                                      count = int(match.group(1)) + 3
+                                      # নতুন লাইন রিপ্লেস করার জন্য নতুন লিস্টে যোগ করি
+                                      # বর্তমানে new_lines-এ আগের লাইন আছে, আমরা শেষেরটা রিপ্লেস করি
+                                      new_lines[-1] = f'    .registers {count}\n'
+                                      reg_found = True
+                                      break
+                              elif '.locals' in lines[j]:
+                                  match = re.search(r'\.locals\s+(\d+)', lines[j])
+                                  if match:
+                                      count = int(match.group(1)) + 3
+                                      new_lines[-1] = f'    .locals {count}\n'
+                                      reg_found = True
+                                      break
+                          if not reg_found:
+                              new_lines.append('    .locals 3\n')
+                          
+                          # Toast মেসেজ তৈরির কোড
+                          class_name = file.replace('.smali', '')
+                          toast_code = f'''
+          # --- START TOAST INJECT (ACTIVITY) ---
+          new-instance v0, Ljava/lang/StringBuilder;
+          invoke-direct {{v0}}, Ljava/lang/StringBuilder;-><init>()V
+          const-string v1, "📱 ওপেন: {class_name}\\nডেটা: "
+          invoke-virtual {{v0, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+          invoke-virtual {{p0}}, Landroid/app/Activity;->getIntent()Landroid/content/Intent;
+          move-result-object v1
+          invoke-virtual {{v1}}, Landroid/content/Intent;->getExtras()Landroid/os/Bundle;
+          move-result-object v1
+          invoke-virtual {{v0, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+          invoke-virtual {{v0}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+          move-result-object v0
+          const/4 v1, 0x1
+          invoke-static {{p0, v0, v1}}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+          move-result-object v0
+          invoke-virtual {{v0}}, Landroid/widget/Toast;->show()V
+          # --- END TOAST INJECT ---
+          '''
+                          # invoke-super এর পরে এই কোড ঢুকাই
+                          # আমরা i বাড়িয়ে লাইন স্কিপ করছি না, বরং পাশের লাইনে ঢুকাব
+                          # যেহেতু new_lines-এ লাইন যোগ করছি, পরের iteration-এ যেন আবার না পড়ে সেজন্য আমরা প্লেইন টেক্সট রিপ্লেস পদ্ধতি ব্যবহার করি।
+                          # সহজ উপায়: পুরো ফাইলটি আবার পড়ে রিপ্লেস করা যাক।
+                          pass
+                      i += 1
+                  
+                  # যেহেতু লুপের ভেতর modify করা ঝামেলা, তাই আমরা পুরো ফাইল রিড করে রিপ্লেস করি (দ্বিতীয় পাস)
+                  # ===== দ্বিতীয় পাস: সরাসরি string replace =====
+                  with open(path, 'r', errors='ignore') as f:
+                      content = f.read()
+                  
+                  new_content = content
+                  
+                  # Activity onCreate তে Toast যোগ করি
+                  if is_activity and '.method onCreate' in content:
+                      # .registers বা .locals খুঁজে বাড়াই
+                      def add_registers(match):
+                          num = int(match.group(1)) + 3
+                          return f'{match.group(0).split(str(num-3))[0]}{num}'
+                      # আমরা সহজভাবে .registers খুঁজে বাড়াব
+                      new_content = re.sub(r'(\.registers\s+)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2))+3}', new_content)
+                      new_content = re.sub(r'(\.locals\s+)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2))+3}', new_content)
+                      
+                      # Toast ইনজেক্ট
+                      class_name = file.replace('.smali', '')
+                      # invoke-super এর পর ইনজেক্ট করতে হবে
+                      # আমরা প্রথম 'invoke-super' এর পর লাইন খুঁজে তার আগে ঢুকাব
+                      parts = new_content.split('invoke-super', 1)
+                      if len(parts) > 1:
+                          after = parts[1]
+                          # প্রথম লাইন break খুঁজে তার আগে ঢুকাই
+                          lines_after = after.split('\n', 1)
+                          toast_code = f'''invoke-super{lines_after[0]}
+          # --- START TOAST ---
+          new-instance v0, Ljava/lang/StringBuilder;
+          invoke-direct {{v0}}, Ljava/lang/StringBuilder;-><init>()V
+          const-string v1, "📱 ওপেন: {class_name}\\nডেটা: "
+          invoke-virtual {{v0, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+          invoke-virtual {{p0}}, Landroid/app/Activity;->getIntent()Landroid/content/Intent;
+          move-result-object v1
+          invoke-virtual {{v1}}, Landroid/content/Intent;->getExtras()Landroid/os/Bundle;
+          move-result-object v1
+          invoke-virtual {{v0, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+          invoke-virtual {{v0}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+          move-result-object v0
+          const/4 v1, 0x0
+          invoke-static {{p0, v0, v1}}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+          move-result-object v0
+          invoke-virtual {{v0}}, Landroid/widget/Toast;->show()V
+          # --- END TOAST ---
+          '''
+                          if len(lines_after) > 1:
+                              new_content = parts[0] + toast_code + '\n' + lines_after[1]
+                          else:
+                              new_content = parts[0] + toast_code
+                          injected_activities += 1
+                          print(f"   ✅ Activity Toast injected: {file}")
+
+                  # ----- 2. onClick / onOptionsItemSelected এ Toast ইনজেক্ট -----
+                  if '.method onClick' in content or '.method onOptionsItemSelected' in content or '.method onMenuItemClick' in content:
+                      # .registers বাড়াই
+                      new_content = re.sub(r'(\.registers\s+)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2))+3}', new_content)
+                      new_content = re.sub(r'(\.locals\s+)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2))+3}', new_content)
+                      
+                      # নাম বের করি
+                      method_type = "ক্লিক"
+                      if 'onOptionsItemSelected' in content:
+                          method_type = "মেনু আইটেম"
+                      elif 'onMenuItemClick' in content:
+                          method_type = "মেনু আইটেম"
+                      
+                      # invoke-super বা return-এর আগে ইনজেক্ট করি
+                      # সহজ উপায়: method এর শেষ return-এর আগে ঢুকাই
+                      lines_split = new_content.split('\n')
+                      new_lines_final = []
+                      injected_this = False
+                      for ln in lines_split:
+                          new_lines_final.append(ln)
+                          if 'return' in ln and 'void' in content:  # void method
+                              # তার আগে Toast ঢুকাই
+                              toast_click = f'''# --- TOAST CLICK ---
+          new-instance v0, Ljava/lang/StringBuilder;
+          invoke-direct {{v0}}, Ljava/lang/StringBuilder;-><init>()V
+          const-string v1, "🖱️ {method_type}: {file}\\nআইডি: "
+          invoke-virtual {{v0, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+          const-string v1, "{file}"
+          invoke-virtual {{v0, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+          invoke-virtual {{v0}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+          move-result-object v0
+          const/4 v1, 0x0
+          invoke-static {{p0, v0, v1}}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+          move-result-object v0
+          invoke-virtual {{v0}}, Landroid/widget/Toast;->show()V
+          # --- END TOAST ---
+          '''
+                              new_lines_final.insert(-1, toast_click)
+                              injected_this = True
+                              break
+                      if injected_this:
+                          new_content = '\n'.join(new_lines_final)
+                          injected_clicks += 1
+                          print(f"   ✅ Click Toast injected: {file}")
+
+                  # যদি কোনো পরিবর্তন হয়ে থাকে, তাহলে ফাইল সেভ করি
+                  if new_content != content:
+                      with open(path, 'w') as f:
+                          f.write(new_content)
+
+          print(f"\n🎯 Injected Activities: {injected_activities}, Click Handlers: {injected_clicks}")
+          EOF
+
+      - name: 📥 Fix Download Limit (3 → 100)
         run: |
-          zip -r smali_code.zip decompiled_app/smali/
-          zip -r java_source.zip java_source/
+          python3 - << 'EOF'
+          import os, re
 
-      - name: Upload decompiled source as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Decompiled-Source
-          path: |
-            smali_code.zip
-            java_source.zip
+          print("Fixing Download Limit 3 -> 100...")
+          for root, dirs, files in os.walk("decompiled_app/res/values"):
+              for f in files:
+                  if f == "integers.xml":
+                      p = os.path.join(root, f)
+                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                      c = re.sub(r'>\s*3\s*<', r'>100<', c)
+                      with open(p, 'w') as fp: fp.write(c)
+                      print("   Patched integers.xml")
 
-      - name: Rebuild APK (no patches)
+          for root, dirs, files in os.walk("decompiled_app/smali"):
+              for f in files:
+                  if "download" in f.lower():
+                      p = os.path.join(root, f)
+                      with open(p, 'r', errors='ignore') as fp: c = fp.read()
+                      c = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
+                      c = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', c)
+                      with open(p, 'w') as fp: fp.write(c)
+          print("   Download Limit Patched (3->100)")
+          EOF
+
+      - name: Rebuild Optimized APK
         run: |
           java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
 
@@ -64,8 +271,8 @@ jobs:
         run: |
           java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
-      - name: Upload APK
+      - name: Upload ShikhoMax APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-APK
+          name: ShikhoMax-PhoneLogger-APK
           path: output_signed/*.apk
