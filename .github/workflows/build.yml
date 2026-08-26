@@ -1,4 +1,4 @@
-name: Build ShikhoMax Stable
+name: Build ShikhoMax (Direct Class & PDF Unlock)
 
 on:
   workflow_dispatch:
@@ -51,42 +51,98 @@ jobs:
         run: |
           python3 - << 'EOF'
           import os
-          import shutil
           from PIL import Image
 
           icon_src = "app_icon.png"
-          if not os.path.exists(icon_src):
-              print("app_icon.png not found!")
-              exit(0)
+          if os.path.exists(icon_src):
+              for root, dirs, files in os.walk("decompiled_app/res"):
+                  if "anydpi" in root:
+                      for f in files:
+                          if "ic_launcher" in f and f.endswith(".xml"):
+                              os.remove(os.path.join(root, f))
 
-          # অ্যাডাপ্টিভ আইকন এক্সএমএল রিমুভ করা যাতে ফোর্সফুলি নতুন PNG শো করে
-          for root, dirs, files in os.walk("decompiled_app/res"):
-              if "anydpi" in root:
-                  for f in files:
-                      if "ic_launcher" in f and f.endswith(".xml"):
-                          os.remove(os.path.join(root, f))
-                          print(f"Removed adaptive XML: {f}")
+              orig = Image.open(icon_src).convert("RGBA")
+              sizes = {
+                  "mipmap-mdpi": (48, 48),
+                  "mipmap-hdpi": (72, 72),
+                  "mipmap-xhdpi": (96, 96),
+                  "mipmap-xxhdpi": (144, 144),
+                  "mipmap-xxxhdpi": (192, 192),
+                  "drawable": (192, 192)
+              }
 
-          # ইমেজ অপটিমাইজেশন (২০-৩০ কেবি এবং হাই কোয়ালিটি)
-          orig = Image.open(icon_src).convert("RGBA")
+              for folder, size in sizes.items():
+                  dir_path = os.path.join("decompiled_app/res", folder)
+                  if os.path.exists(dir_path):
+                      resized = orig.resize(size, Image.Resampling.LANCZOS)
+                      for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                          out_file = os.path.join(dir_path, name)
+                          resized.save(out_file, format="PNG", optimize=True)
+              print("Icons successfully replaced.")
+          EOF
+
+      - name: Patch Item Level Lock & Resource Access (Smali Level)
+        run: |
+          python3 - << 'EOF'
+          import os
+          import re
+
+          print("Deep Patching Item-level Locks, PDFs & Video Redirections...")
           
-          sizes = {
-              "mipmap-mdpi": (48, 48),
-              "mipmap-hdpi": (72, 72),
-              "mipmap-xhdpi": (96, 96),
-              "mipmap-xxhdpi": (144, 144),
-              "mipmap-xxxhdpi": (192, 192),
-              "drawable": (192, 192)
-          }
+          # মেথড যেগুলো ট্রু (1) রিটার্ন করলে আনলক হবে
+          true_keywords = [
+              "isEnrolled", "isSubscribed", "isPurchased", "getIsEnrolled", 
+              "hasAccess", "isCourseUnlocked", "isUnlocked", "isFree", 
+              "getIsFree", "canAccess", "isContentUnlocked", "isResourceUnlocked"
+          ]
 
-          for folder, size in sizes.items():
-              dir_path = os.path.join("decompiled_app/res", folder)
-              if os.path.exists(dir_path):
-                  resized = orig.resize(size, Image.Resampling.LANCZOS)
-                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
-                      out_file = os.path.join(dir_path, name)
-                      resized.save(out_file, format="PNG", optimize=True)
-          print("All launcher icons fully replaced and optimized!")
+          # মেথড যেগুলো ফলস (0) রিটার্ন করলে লক বাইপাস হবে
+          false_keywords = [
+              "isLocked", "getIsLocked", "isItemLocked", "requiresSubscription", 
+              "isPaymentRequired", "isContentLocked"
+          ]
+
+          patched_count = 0
+
+          for root, dirs, files in os.walk("decompiled_app"):
+              if "smali" in root:
+                  for file in files:
+                      if file.endswith(".smali"):
+                          filepath = os.path.join(root, file)
+                          with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                              content = f.read()
+
+                          modified = False
+
+                          # প্যাচ ১: ট্রু রিটার্ন মেথড
+                          for kw in true_keywords:
+                              pattern = rf'(\.method\s+[^\n]*{kw}\(\)Z\s*\n\s*\.registers\s+\d+)([\s\S]*?)(return\s+[vp]0)'
+                              if re.search(pattern, content):
+                                  content = re.sub(
+                                      pattern,
+                                      r'\1\n    const/4 v0, 0x1\n    return v0',
+                                      content
+                                  )
+                                  modified = True
+                                  patched_count += 1
+
+                          # প্যাচ ২: ফলস রিটার্ন মেথড (লক সরানো)
+                          for kw in false_keywords:
+                              pattern = rf'(\.method\s+[^\n]*{kw}\(\)Z\s*\n\s*\.registers\s+\d+)([\s\S]*?)(return\s+[vp]0)'
+                              if re.search(pattern, content):
+                                  content = re.sub(
+                                      pattern,
+                                      r'\1\n    const/4 v0, 0x0\n    return v0',
+                                      content
+                                  )
+                                  modified = True
+                                  patched_count += 1
+
+                          if modified:
+                              with open(filepath, "w", encoding="utf-8") as f:
+                                  f.write(content)
+
+          print(f"Total {patched_count} individual video/PDF/course lock validation methods patched!")
           EOF
 
       - name: Rebuild Optimized APK
@@ -100,5 +156,5 @@ jobs:
       - name: Upload ShikhoMax APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-Stable-APK
+          name: ShikhoMax-Fully-Unlocked-APK
           path: output_signed/*.apk
