@@ -1,0 +1,47 @@
+name: Convert APKS to Universal APK
+
+on:
+  workflow_dispatch: # এটি রাখলে গিটহাব থেকে ম্যানুয়ালি রান করা যায়
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Download Tools & Setup
+        run: |
+          pip install gdown
+          # APKEditor ডাউনলোড (যা স্প্লিট এপিকে মার্জ করে)
+          wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
+          # APK Signer ডাউনলোড
+          wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Download APKS from Google Drive
+        run: |
+          gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
+          ls -lh
+
+      - name: Merge to Single Universal APK
+        run: |
+          # APKs ফাইলটিকে মার্জ করে সিঙ্গেল APK তৈরি
+          java -jar APKEditor.jar m -i my_app.apks -o merged_unsigned.apk
+
+      - name: Sign the APK
+        run: |
+          # APK সাইন করা (যাতে ফোনে ইনস্টল করা যায়)
+          java -jar uber-apk-signer.jar --apks merged_unsigned.apk -o output_signed/
+
+      - name: Upload Universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Universal-APK-Result
+          path: output_signed/*.apk
