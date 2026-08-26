@@ -76,13 +76,25 @@ jobs:
 
       - name: Update App Logo
         run: |
-          if [ -f "app_icon.png" ]; then
-            echo "Replacing App Icons safely..."
-            find decompiled_app/res/ -type f \( -name "ic_launcher*.png" -o -name "ic_launcher*.webp" \) -exec cp -f app_icon.png {} \;
-            echo "App Icons updated successfully."
-          else
-            echo "app_icon.png not found, skipping."
-          fi
+          python3 - << 'EOF'
+          import os
+          import shutil
+
+          icon_src = "app_icon.png"
+          if os.path.exists(icon_src):
+              print("Found app_icon.png, updating all launcher icons...")
+              count = 0
+              for root, dirs, files in os.walk("decompiled_app/res"):
+                  for file in files:
+                      # ic_launcher সম্পর্কিত সব png ও webp ফাইল প্রতিস্থাপন করা
+                      if file.startswith("ic_launcher") and (file.endswith(".png") or file.endswith(".webp")):
+                          target_file = os.path.join(root, file)
+                          shutil.copyfile(icon_src, target_file)
+                          count += 1
+              print(f"Successfully replaced {count} icon files.")
+          else:
+              print("app_icon.png not found, skipping icon replacement.")
+          EOF
 
       - name: Rebuild APK
         run: |
