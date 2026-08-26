@@ -20,11 +20,8 @@ jobs:
       - name: Download Tools & Setup
         run: |
           pip install gdown
-          # APKEditor ডাউনলোড
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          # Apktool ডাউনলোড
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
-          # APK Signer ডাউনলোড
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
       - name: Download APKS from Google Drive
@@ -81,19 +78,29 @@ jobs:
           import shutil
 
           icon_src = "app_icon.png"
-          if os.path.exists(icon_src):
-              print("Found app_icon.png, updating all launcher icons...")
-              count = 0
-              for root, dirs, files in os.walk("decompiled_app/res"):
-                  for file in files:
-                      # ic_launcher সম্পর্কিত সব png ও webp ফাইল প্রতিস্থাপন করা
-                      if file.startswith("ic_launcher") and (file.endswith(".png") or file.endswith(".webp")):
-                          target_file = os.path.join(root, file)
-                          shutil.copyfile(icon_src, target_file)
-                          count += 1
-              print(f"Successfully replaced {count} icon files.")
-          else:
-              print("app_icon.png not found, skipping icon replacement.")
+          if not os.path.exists(icon_src):
+              print("app_icon.png not found!")
+              exit(0)
+
+          print("Replacing all potential launcher icon files...")
+          replaced_count = 0
+          
+          # অ্যাপের রিসোর্স ফোল্ডারে যত রকমের আইকন নাম থাকে (ic_launcher, icon, app_icon ইত্যাদি)
+          target_prefixes = ("ic_launcher", "icon", "app_icon")
+
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              for file in files:
+                  name_lower = file.lower()
+                  # আইকন ফাইল চিহ্নিত করা (png বা webp)
+                  if any(name_lower.startswith(p) for p in target_prefixes) and (name_lower.endswith(".png") or name_lower.endswith(".webp")):
+                      target_path = os.path.join(root, file)
+                      try:
+                          shutil.copyfile(icon_src, target_path)
+                          replaced_count += 1
+                      except Exception as e:
+                          print(f"Failed to replace {target_path}: {e}")
+
+          print(f"Total icon files replaced: {replaced_count}")
           EOF
 
       - name: Rebuild APK
