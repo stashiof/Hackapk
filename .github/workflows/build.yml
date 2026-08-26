@@ -1,4 +1,4 @@
-name: Build ShikhoMax (Direct Class & PDF Unlock)
+name: Build ShikhoMax (Full Unlock)
 
 on:
   workflow_dispatch:
@@ -17,37 +17,43 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Download Tools & Setup
+      - name: Install Python Dependencies
+        run: pip install gdown pillow
+
+      - name: Download Tools
         run: |
-          pip install gdown pillow
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
       - name: Download APKS from Google Drive
-        run: |
-          gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
+        run: gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
 
       - name: Merge to Universal APK
-        run: |
-          java -jar APKEditor.jar m -i my_app.apks -o merged.apk
+        run: java -jar APKEditor.jar m -i my_app.apks -o merged.apk
 
       - name: Decompile APK
-        run: |
-          java -jar apktool.jar d merged.apk -o decompiled_app -f
+        run: java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
+      # --------------------------------------------------------------------
+      # 1. Bypass FLAG_SECURE (enable screenshots)
+      # --------------------------------------------------------------------
+      - name: Stable Bypass FLAG_SECURE
         run: |
-          echo "Patching FLAG_SECURE..."
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
 
-      - name: Change App Name to ShikhoMax
+      # --------------------------------------------------------------------
+      # 2. Change App Name to ShikhoMax
+      # --------------------------------------------------------------------
+      - name: Update App Name
         run: |
-          echo "Updating App Name to ShikhoMax..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
 
-      - name: Force Override Adaptive Icons & Compress
+      # --------------------------------------------------------------------
+      # 3. Replace Icons (if you supply app_icon.png)
+      # --------------------------------------------------------------------
+      - name: Override Icons (optional)
         run: |
           python3 - << 'EOF'
           import os
@@ -78,80 +84,183 @@ jobs:
                       for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
                           out_file = os.path.join(dir_path, name)
                           resized.save(out_file, format="PNG", optimize=True)
-              print("Icons successfully replaced.")
+              print("Icons replaced.")
           EOF
 
-      - name: Patch Item Level Lock & Resource Access (Smali Level)
+      # --------------------------------------------------------------------
+      # 4. Aggressive Smali Patching – Unlock Everything
+      # --------------------------------------------------------------------
+      - name: Full Unlock Patch (All Lock Methods & Fields)
         run: |
           python3 - << 'EOF'
           import os
           import re
 
-          print("Deep Patching Item-level Locks, PDFs & Video Redirections...")
-          
-          # মেথড যেগুলো ট্রু (1) রিটার্ন করলে আনলক হবে
-          true_keywords = [
-              "isEnrolled", "isSubscribed", "isPurchased", "getIsEnrolled", 
-              "hasAccess", "isCourseUnlocked", "isUnlocked", "isFree", 
-              "getIsFree", "canAccess", "isContentUnlocked", "isResourceUnlocked"
+          # --- Heuristic classification ---
+          # Methods that should ALWAYS return TRUE
+          TRUE_KEYWORDS = [
+              "isUnlocked", "isEnrolled", "hasAccess", "isPurchased", "isPremium",
+              "isSubscribed", "canAccess", "isAllowed", "isAvailable", "isFree",
+              "isCourseUnlocked", "isContentUnlocked", "isResourceUnlocked",
+              "isVideoUnlocked", "isPdfUnlocked", "isLessonUnlocked", "isPaid",
+              "getIsUnlocked", "getIsEnrolled", "getHasAccess", "getIsPurchased",
+              "getIsPremium", "getIsSubscribed", "isOfflineAvailable"
           ]
 
-          # মেথড যেগুলো ফলস (0) রিটার্ন করলে লক বাইপাস হবে
-          false_keywords = [
-              "isLocked", "getIsLocked", "isItemLocked", "requiresSubscription", 
-              "isPaymentRequired", "isContentLocked"
+          # Methods that should ALWAYS return FALSE
+          FALSE_KEYWORDS = [
+              "isLocked", "isRestricted", "requiresSubscription", "requiresPayment",
+              "isItemLocked", "isContentLocked", "isVideoLocked", "isPdfLocked",
+              "isLessonLocked", "needsPurchase", "isBlocked", "isDenied",
+              "getIsLocked", "getIsRestricted"
           ]
 
-          patched_count = 0
+          # Additional generic access‑check patterns
+          ACCESS_KEYWORDS = [
+              "lock", "unlock", "enroll", "subscribe", "premium", "paid",
+              "access", "allow", "restrict", "free", "purchase", "buy"
+          ]
 
+          def should_return_true(method_name):
+              method_lower = method_name.lower()
+              for kw in TRUE_KEYWORDS:
+                  if kw.lower() in method_lower:
+                      return True
+              # If it's not clearly a false check, assume true if it contains access/unlock etc.
+              if any(kw in method_lower for kw in ["unlock", "enroll", "subscribe", "premium", "paid", "access", "allow", "free"]):
+                  return True
+              return False
+
+          def should_return_false(method_name):
+              method_lower = method_name.lower()
+              for kw in FALSE_KEYWORDS:
+                  if kw.lower() in method_lower:
+                      return True
+              if any(kw in method_lower for kw in ["lock", "restrict", "block", "deny"]):
+                  return True
+              return False
+
+          patched_methods = 0
+
+          # Walk through all smali directories
           for root, dirs, files in os.walk("decompiled_app"):
-              if "smali" in root:
-                  for file in files:
-                      if file.endswith(".smali"):
-                          filepath = os.path.join(root, file)
-                          with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                              content = f.read()
+              if "smali" not in root:
+                  continue
+              for file in files:
+                  if not file.endswith(".smali"):
+                      continue
+                  filepath = os.path.join(root, file)
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
 
-                          modified = False
+                  # Split into methods (we'll use a simple regex to find method blocks)
+                  # This regex captures the entire method from .method to .end method
+                  method_pattern = re.compile(
+                      r'(\.method\s+(?:public|private|protected|static|final)?\s*(?:.*?)\s*(\w+)\(.*?\)Z\s*.*?\.end\s+method)',
+                      re.DOTALL
+                  )
 
-                          # প্যাচ ১: ট্রু রিটার্ন মেথড
-                          for kw in true_keywords:
-                              pattern = rf'(\.method\s+[^\n]*{kw}\(\)Z\s*\n\s*\.registers\s+\d+)([\s\S]*?)(return\s+[vp]0)'
-                              if re.search(pattern, content):
-                                  content = re.sub(
-                                      pattern,
-                                      r'\1\n    const/4 v0, 0x1\n    return v0',
-                                      content
-                                  )
-                                  modified = True
-                                  patched_count += 1
+                  new_content = content
+                  for match in method_pattern.finditer(content):
+                      full_method = match.group(1)
+                      method_name = match.group(2)
+                      # Determine if we should patch
+                      patch_true = should_return_true(method_name)
+                      patch_false = should_return_false(method_name)
 
-                          # প্যাচ ২: ফলস রিটার্ন মেথড (লক সরানো)
-                          for kw in false_keywords:
-                              pattern = rf'(\.method\s+[^\n]*{kw}\(\)Z\s*\n\s*\.registers\s+\d+)([\s\S]*?)(return\s+[vp]0)'
-                              if re.search(pattern, content):
-                                  content = re.sub(
-                                      pattern,
-                                      r'\1\n    const/4 v0, 0x0\n    return v0',
-                                      content
-                                  )
-                                  modified = True
-                                  patched_count += 1
+                      if not patch_true and not patch_false:
+                          # If it contains any generic access keyword, decide
+                          if any(kw in method_name.lower() for kw in ACCESS_KEYWORDS):
+                              # Heuristic: if it's "isLocked" -> false, else true
+                              if "lock" in method_name.lower() or "restrict" in method_name.lower():
+                                  patch_false = True
+                              else:
+                                  patch_true = True
 
-                          if modified:
-                              with open(filepath, "w", encoding="utf-8") as f:
-                                  f.write(content)
+                      if patch_true or patch_false:
+                          # Build the replacement method body
+                          return_value = "0x1" if patch_true else "0x0"
+                          # We'll replace everything after .registers (or after the method signature)
+                          # with const/4 v0, value and return v0
+                          # Find the line with .registers
+                          lines = full_method.split('\n')
+                          new_lines = []
+                          inserted = False
+                          for line in lines:
+                              if not inserted and re.search(r'\.registers\s+\d+', line):
+                                  new_lines.append(line)
+                                  new_lines.append(f"    const/4 v0, {return_value}")
+                                  new_lines.append(f"    return v0")
+                                  inserted = True
+                              elif not inserted and re.search(r'\.end\s+method', line):
+                                  # If no .registers found, insert before .end method
+                                  new_lines.append(f"    const/4 v0, {return_value}")
+                                  new_lines.append(f"    return v0")
+                                  new_lines.append(line)
+                                  inserted = True
+                              else:
+                                  new_lines.append(line)
+                          # If still not inserted (shouldn't happen), add at end
+                          if not inserted:
+                              new_lines.append(f"    const/4 v0, {return_value}")
+                              new_lines.append(f"    return v0")
+                          new_method = "\n".join(new_lines)
 
-          print(f"Total {patched_count} individual video/PDF/course lock validation methods patched!")
+                          # Replace the original method in content
+                          new_content = new_content.replace(full_method, new_method)
+                          patched_methods += 1
+
+                  if new_content != content:
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(new_content)
+
+          print(f"Patched {patched_methods} boolean lock/unlock methods.")
+
+          # --- Also patch field initializations for common lock flags ---
+          # Search for fields like "locked" or "premium" and set them in constructors
+          # We'll look for .field private ... locked:Z and set to 0 (false) or 1 (true)
+          # We'll replace any assignment of such fields to force unlock.
+          # For simplicity, we'll inject code at the end of constructors that set these fields to unlocked state.
+          # This is more complex; we'll add a simple sed-like approach to replace const/4 assignments to these fields.
+
+          print("Patching field initializations (lock flags)...")
+          for root, dirs, files in os.walk("decompiled_app"):
+              if "smali" not in root:
+                  continue
+              for file in files:
+                  if not file.endswith(".smali"):
+                      continue
+                  filepath = os.path.join(root, file)
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  # Find any assignment to a field that contains "lock" or "premium" or "paid" and set to true/false
+                  # Example: iput-boolean v0, p0, Lcom/example/User;->isLocked:Z
+                  # We'll replace with const/4 v0, 0x0 (if lock) or 0x1 (if premium)
+                  # This is a rough hack but often works.
+                  pattern = re.compile(r'(iput-boolean\s+)(v\d+)(,\s*[pvu]\d+,\s*L[^;]+;->)(.*?)(:Z)')
+                  def replacer(m):
+                      field_name = m.group(4)
+                      if any(kw in field_name.lower() for kw in ["lock", "restrict", "block", "deny"]):
+                          return f"const/4 {m.group(2)}, 0x0\n    {m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}{m.group(5)}"
+                      elif any(kw in field_name.lower() for kw in ["unlock", "premium", "paid", "enroll", "subscribe", "access"]):
+                          return f"const/4 {m.group(2)}, 0x1\n    {m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}{m.group(5)}"
+                      return m.group(0)
+                  new_content = re.sub(pattern, replacer, content)
+                  if new_content != content:
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(new_content)
+
+          print("Field initialization patch complete.")
           EOF
 
+      # --------------------------------------------------------------------
+      # 5. Rebuild & Sign APK
+      # --------------------------------------------------------------------
       - name: Rebuild Optimized APK
-        run: |
-          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
+        run: java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
 
       - name: Sign APK
-        run: |
-          java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
+        run: java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
       - name: Upload ShikhoMax APK
         uses: actions/upload-artifact@v4
