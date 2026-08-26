@@ -1,4 +1,4 @@
-name: Convert APKS and Enable Screenshots
+name: Convert APKS and Patch FLAG_SECURE (Stable Build)
 
 on:
   workflow_dispatch:
@@ -20,11 +20,10 @@ jobs:
       - name: Download Tools & Setup
         run: |
           pip install gdown
-          # APKEditor ডাউনলোড
+          # APKEditor ডাউনলোড (স্প্লিট এপিকে মার্জ করতে)
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          # ⬇️⬇️ সংশোধিত এবং কাজ করে এমন Apktool ডাউনলোড লিংক ⬇️⬇️
+          # Apktool ডাউনলোড (এপিকে ডিকম্পাইল/রিকম্পাইল করতে)
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
-          # ⬆️⬆️ ⬆️⬆️
           # APK Signer ডাউনলোড
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
@@ -38,28 +37,30 @@ jobs:
 
       - name: Decompile APK
         run: |
+          # সব ফাইল ডিকম্পাইল করা
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Bypass FLAG_SECURE (Enable Screenshots)
+      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
         run: |
-          echo "Patching FLAG_SECURE references..."
-          # FLAG_SECURE এর হেক্স মান 0x2000 বা ডেসিমাল 8192 কে 0x0 দিয়ে প্রতিস্থাপন
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/const\/16 [vp][0-9]*, 0x2000/const\/16 v0, 0x0/g' {} +
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/const [vp][0-9]*, 0x2000/const\/4 v0, 0x0/g' {} +
-          # setFlags মেথডে FLAG_SECURE কল নিষ্ক্রিয় করা
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/# disabled_setFlags/g' {} +
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i 's/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/# disabled_addFlags/g' {} +
+          echo "Applying stable patch for FLAG_SECURE..."
+          # এই কমান্ডটি শুধুমাত্র সেই মেথডগুলোতে setFlags কল নিষ্ক্রিয় করবে, অন্য কোড পরিবর্তন করবে না।
+          # এটি setFlags কল এবং addFlags কল খুঁজে কমেন্ট আউট করে দেয়।
+          
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
 
       - name: Rebuild APK
         run: |
+          # মডিফাইড অ্যাপ রিবিল্ড করা
           java -jar apktool.jar b decompiled_app -o patched_unsigned.apk --use-aapt2
 
       - name: Sign the Patched APK
         run: |
+          # এপিকে সাইন করা (V2/V3 স্কিম)
           java -jar uber-apk-signer.jar --apks patched_unsigned.apk -o output_signed/
 
-      - name: Upload Patched Universal APK
+      - name: Upload Patched Stable APK
         uses: actions/upload-artifact@v4
         with:
-          name: Patched-Screenshot-Enabled-APK
+          name: Patched-Stable-Build-APK
           path: output_signed/*.apk
