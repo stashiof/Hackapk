@@ -1,4 +1,4 @@
-name: Build ShikhoMax (Full Unlock)
+name: Build ShikhoMax (Advanced Full Unlock)
 
 on:
   workflow_dispatch:
@@ -88,60 +88,73 @@ jobs:
           EOF
 
       # --------------------------------------------------------------------
-      # 4. Aggressive Smali Patching – Unlock Everything
+      # 4. Aggressive Smali Patching – Full Unlock Logic
       # --------------------------------------------------------------------
-      - name: Full Unlock Patch (All Lock Methods & Fields)
+      - name: Advanced Full Unlock Patch (Methods, Fields & Course Logic)
         run: |
           python3 - << 'EOF'
           import os
           import re
 
-          # --- Heuristic classification ---
-          # Methods that should ALWAYS return TRUE
+          # --- Heuristic classification for methods ---
+          # Methods that should ALWAYS return TRUE (or equivalent for other types)
           TRUE_KEYWORDS = [
               "isUnlocked", "isEnrolled", "hasAccess", "isPurchased", "isPremium",
               "isSubscribed", "canAccess", "isAllowed", "isAvailable", "isFree",
               "isCourseUnlocked", "isContentUnlocked", "isResourceUnlocked",
               "isVideoUnlocked", "isPdfUnlocked", "isLessonUnlocked", "isPaid",
               "getIsUnlocked", "getIsEnrolled", "getHasAccess", "getIsPurchased",
-              "getIsPremium", "getIsSubscribed", "isOfflineAvailable"
+              "getIsPremium", "getIsSubscribed", "isOfflineAvailable",
+              "hasSubscription", "isPro", "isMember", "isActivated", "isAuthorized",
+              "canDownload", "isDownloadable", "isComplete", "isFinished", "isPurchased",
+              "getCourseStatus", "getUnlockStatus", "getAccessLevel", "getFeatureStatus"
           ]
 
-          # Methods that should ALWAYS return FALSE
+          # Methods that should ALWAYS return FALSE (or equivalent for other types)
           FALSE_KEYWORDS = [
               "isLocked", "isRestricted", "requiresSubscription", "requiresPayment",
               "isItemLocked", "isContentLocked", "isVideoLocked", "isPdfLocked",
               "isLessonLocked", "needsPurchase", "isBlocked", "isDenied",
-              "getIsLocked", "getIsRestricted"
+              "getIsLocked", "getIsRestricted", "isTrial", "isExpired", "isPending",
+              "isForbidden", "isInvalid", "isLimited", "isFreeTrial"
           ]
 
-          # Additional generic access‑check patterns
+          # Additional generic access-check patterns
           ACCESS_KEYWORDS = [
               "lock", "unlock", "enroll", "subscribe", "premium", "paid",
-              "access", "allow", "restrict", "free", "purchase", "buy"
+              "access", "allow", "restrict", "free", "purchase", "buy",
+              "course", "lesson", "video", "pdf", "exam", "quiz", "content", "resource",
+              "status", "state", "permission", "entitlement", "feature",
+              "check", "verify", "validate", "auth"
           ]
 
-          def should_return_true(method_name):
+          # Helper to determine if a method should be patched to return true or false
+          def get_patch_action(method_name):
               method_lower = method_name.lower()
+              
+              # Explicit TRUE keywords
               for kw in TRUE_KEYWORDS:
                   if kw.lower() in method_lower:
-                      return True
-              # If it's not clearly a false check, assume true if it contains access/unlock etc.
-              if any(kw in method_lower for kw in ["unlock", "enroll", "subscribe", "premium", "paid", "access", "allow", "free"]):
-                  return True
-              return False
-
-          def should_return_false(method_name):
-              method_lower = method_name.lower()
+                      return "TRUE"
+              
+              # Explicit FALSE keywords
               for kw in FALSE_KEYWORDS:
                   if kw.lower() in method_lower:
-                      return True
-              if any(kw in method_lower for kw in ["lock", "restrict", "block", "deny"]):
-                  return True
-              return False
+                      return "FALSE"
+              
+              # Heuristic for generic access keywords
+              for kw in ACCESS_KEYWORDS:
+                  if kw.lower() in method_lower:
+                      # If it contains "lock" or "restrict" in the absence of explicit TRUE keywords, assume FALSE
+                      if ("lock" in method_lower or "restrict" in method_lower or "deny" in method_lower or "trial" in method_lower) and not any(tk.lower() in method_lower for tk in TRUE_KEYWORDS):
+                          return "FALSE"
+                      # Otherwise, assume TRUE
+                      return "TRUE"
+              return "NONE" # No patch needed
 
-          patched_methods = 0
-
+          patched_methods_count = 0
+          patched_fields_count = 0
+          
           # Walk through all smali directories
           for root, dirs, files in os.walk("decompiled_app"):
               if "smali" not in root:
@@ -152,118 +165,144 @@ jobs:
                   filepath = os.path.join(root, file)
                   with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
                       content = f.read()
-
-                  # Split into methods (we'll use a simple regex to find method blocks)
-                  # This regex captures the entire method from .method to .end method
+                  
+                  new_content = content
+                  
+                  # --- Method Patching ---
+                  # This regex captures the entire method from .method to .end method,
+                  # and extracts return type for specific patching.
+                  # Capture Group 1: Full method block
+                  # Capture Group 2: Method modifiers (public, private, static, etc.)
+                  # Capture Group 3: Method name
+                  # Capture Group 4: Parameter signature
+                  # Capture Group 5: Return type (Z, I, Ljava/lang/String;, etc.)
                   method_pattern = re.compile(
-                      r'(\.method\s+(?:public|private|protected|static|final)?\s*(?:.*?)\s*(\w+)\(.*?\)Z\s*.*?\.end\s+method)',
+                      r'(\.method\s+(?:(public|private|protected|static|final|\s)*)\s*(\w+)\((.*?)?\)(Z|I|Ljava/lang/String;|V|Ljava/lang/Object;)\s*.*?\.end\s+method)',
                       re.DOTALL
                   )
 
-                  new_content = content
                   for match in method_pattern.finditer(content):
-                      full_method = match.group(1)
-                      method_name = match.group(2)
-                      # Determine if we should patch
-                      patch_true = should_return_true(method_name)
-                      patch_false = should_return_false(method_name)
+                      full_method_block = match.group(1)
+                      method_name = match.group(3)
+                      return_type = match.group(5)
+                      
+                      patch_action = get_patch_action(method_name)
 
-                      if not patch_true and not patch_false:
-                          # If it contains any generic access keyword, decide
-                          if any(kw in method_name.lower() for kw in ACCESS_KEYWORDS):
-                              # Heuristic: if it's "isLocked" -> false, else true
-                              if "lock" in method_name.lower() or "restrict" in method_name.lower():
-                                  patch_false = True
-                              else:
-                                  patch_true = True
+                      if patch_action == "NONE":
+                          continue
 
-                      if patch_true or patch_false:
-                          # Build the replacement method body
-                          return_value = "0x1" if patch_true else "0x0"
-                          # We'll replace everything after .registers (or after the method signature)
-                          # with const/4 v0, value and return v0
-                          # Find the line with .registers
-                          lines = full_method.split('\n')
-                          new_lines = []
-                          inserted = False
-                          for line in lines:
-                              if not inserted and re.search(r'\.registers\s+\d+', line):
-                                  new_lines.append(line)
-                                  new_lines.append(f"    const/4 v0, {return_value}")
-                                  new_lines.append(f"    return v0")
-                                  inserted = True
-                              elif not inserted and re.search(r'\.end\s+method', line):
-                                  # If no .registers found, insert before .end method
-                                  new_lines.append(f"    const/4 v0, {return_value}")
-                                  new_lines.append(f"    return v0")
-                                  new_lines.append(line)
-                                  inserted = True
-                              else:
-                                  new_lines.append(line)
-                          # If still not inserted (shouldn't happen), add at end
-                          if not inserted:
-                              new_lines.append(f"    const/4 v0, {return_value}")
-                              new_lines.append(f"    return v0")
-                          new_method = "\n".join(new_lines)
+                      # Determine the return instruction based on type and action
+                      return_smali = ""
+                      if return_type == "Z": # Boolean
+                          return_value = "0x1" if patch_action == "TRUE" else "0x0"
+                          return_smali = f"    const/4 v0, {return_value}\n    return v0"
+                      elif return_type == "I": # Integer
+                          # For integers, 1 for true-like, 0 for false-like.
+                          # Could also return a large positive number for "unlocked status code"
+                          return_value = "0x1" if patch_action == "TRUE" else "0x0"
+                          if "getCourseStatus" in method_name or "getUnlockStatus" in method_name:
+                              # Heuristic: if it's a status getter, return a common "unlocked" status code like 1 or 200
+                              return_value = "0x1" # Or 0xc8 for 200
+                          return_smali = f"    const/4 v0, {return_value}\n    return v0"
+                      elif return_type == "Ljava/lang/String;": # String
+                          if patch_action == "TRUE":
+                              # Return an empty string or "unlocked" status string
+                              return_smali = '    const-string v0, "unlocked"\n    return-object v0'
+                          else: # patch_action == "FALSE"
+                              # Return null or "locked" status string
+                              return_smali = '    const/4 v0, 0x0\n    return-object v0'
+                      elif return_type == "V": # Void methods, often perform an action.
+                          # If a void method's name suggests it locks/restricts, we can make it return immediately.
+                          if "lock" in method_name.lower() or "restrict" in method_name.lower() or "block" in method_name.lower():
+                              return_smali = "    return-void"
+                          else:
+                              continue # Don't patch other void methods
+                      elif return_type == "Ljava/lang/Object;": # Generic Object return type
+                          # If it's an object that might represent a status or state, try to return null or a dummy object
+                          if patch_action == "TRUE":
+                              # Returning null might cause NullPointerExceptions later.
+                              # A safer approach is to skip or try to return a new instance of a simple object if possible.
+                              # For now, we'll return null for simplicity, as it often means "no restriction object".
+                              return_smali = '    const/4 v0, 0x0\n    return-object v0'
+                          else:
+                              return_smali = '    const/4 v0, 0x0\n    return-object v0'
+                      else: # Other object types, arrays, etc. - complex, skip for now
+                          continue
 
-                          # Replace the original method in content
-                          new_content = new_content.replace(full_method, new_method)
-                          patched_methods += 1
+                      # Build the replacement method body
+                      # We'll replace everything after .registers (or after the method signature)
+                      # with const/4 v0, value and return v0
+                      # Find the line with .registers or the method signature end
+                      lines = full_method_block.split('\n')
+                      new_method_lines = []
+                      inserted = False
+                      for i, line in enumerate(lines):
+                          new_method_lines.append(line)
+                          if not inserted and (re.search(r'\.registers\s+\d+', line) or re.search(r'\.locals\s+\d+', line) or (i == 0 and not re.search(r'\.prologue', lines[i+1] if i+1 < len(lines) else ''))):
+                              # Insert after .registers, or .locals, or directly after method signature if no prologue
+                              new_method_lines.append(return_smali)
+                              new_method_lines.append(f"    # Patched: Original method body skipped.")
+                              # Skip the rest of the original method body until .end method
+                              while i + 1 < len(lines) and not lines[i+1].strip().startswith('.end method'):
+                                  i += 1 # Advance index to skip original lines
+                              inserted = True
+                          
+                          if inserted and line.strip().startswith('.end method'):
+                              break # Stop appending after .end method
+                      
+                      if not inserted: # Fallback: if no clear injection point, prepend to method body
+                          new_method_lines = lines[:1] + [return_smali, f"    # Patched: Original method body skipped (fallback)."] + lines[1:]
+                          
+                      new_method_block = "\n".join(new_method_lines)
 
-                  if new_content != content:
-                      with open(filepath, "w", encoding="utf-8") as f:
-                          f.write(new_content)
+                      # Replace the original method in content
+                      # Use re.sub with a limit to replace only the current match
+                      new_content = re.sub(re.escape(full_method_block), new_method_block, new_content, 1)
+                      patched_methods_count += 1
 
-          print(f"Patched {patched_methods} boolean lock/unlock methods.")
+                  # --- Field Patching ---
+                  # Search for fields like "locked" or "premium" and ensure they are initialized to an unlocked state.
+                  # This is more complex than simple regex. We will look for field declarations and try to
+                  # inject code into constructors or static initializers to set these fields to a desired state.
+                  # This is a more robust approach than simply replacing assignments.
 
-          # --- Also patch field initializations for common lock flags ---
-          # Search for fields like "locked" or "premium" and set them in constructors
-          # We'll look for .field private ... locked:Z and set to 0 (false) or 1 (true)
-          # We'll replace any assignment of such fields to force unlock.
-          # For simplicity, we'll inject code at the end of constructors that set these fields to unlocked state.
-          # This is more complex; we'll add a simple sed-like approach to replace const/4 assignments to these fields.
-
-          print("Patching field initializations (lock flags)...")
-          for root, dirs, files in os.walk("decompiled_app"):
-              if "smali" not in root:
-                  continue
-              for file in files:
-                  if not file.endswith(".smali"):
+                  # Find class name
+                  class_name_match = re.search(r'\.class\s+.*?\s+(L[^;]+;)', content)
+                  if not class_name_match:
                       continue
-                  filepath = os.path.join(root, file)
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  # Find any assignment to a field that contains "lock" or "premium" or "paid" and set to true/false
-                  # Example: iput-boolean v0, p0, Lcom/example/User;->isLocked:Z
-                  # We'll replace with const/4 v0, 0x0 (if lock) or 0x1 (if premium)
-                  # This is a rough hack but often works.
-                  pattern = re.compile(r'(iput-boolean\s+)(v\d+)(,\s*[pvu]\d+,\s*L[^;]+;->)(.*?)(:Z)')
-                  def replacer(m):
-                      field_name = m.group(4)
-                      if any(kw in field_name.lower() for kw in ["lock", "restrict", "block", "deny"]):
-                          return f"const/4 {m.group(2)}, 0x0\n    {m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}{m.group(5)}"
-                      elif any(kw in field_name.lower() for kw in ["unlock", "premium", "paid", "enroll", "subscribe", "access"]):
-                          return f"const/4 {m.group(2)}, 0x1\n    {m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}{m.group(5)}"
-                      return m.group(0)
-                  new_content = re.sub(pattern, replacer, content)
-                  if new_content != content:
-                      with open(filepath, "w", encoding="utf-8") as f:
-                          f.write(new_content)
+                  current_class_full_name = class_name_match.group(1) # e.g., Lcom/example/app/MyClass;
 
-          print("Field initialization patch complete.")
-          EOF
+                  # Find relevant boolean, int, or String fields
+                  field_pattern = re.compile(r'\.field\s+(?:public|private|protected|static|final)?\s*(\w+):([ZILjava/lang/String;])')
+                  fields_to_patch = [] # List of (field_name, field_type, patch_action)
 
-      # --------------------------------------------------------------------
-      # 5. Rebuild & Sign APK
-      # --------------------------------------------------------------------
-      - name: Rebuild Optimized APK
-        run: java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
+                  for field_match in field_pattern.finditer(content):
+                      field_name = field_match.group(1)
+                      field_type = field_match.group(2)
+                      
+                      field_lower = field_name.lower()
+                      patch_action = "NONE"
+                      if any(kw in field_lower for kw in ["unlocked", "premium", "paid", "access", "enabled", "active", "purchased", "subscribed", "courseunlocked"]):
+                          patch_action = "TRUE"
+                      elif any(kw in field_lower for kw in ["locked", "restricted", "trial", "expired", "pending", "disabled"]):
+                          patch_action = "FALSE"
+                      
+                      if patch_action != "NONE":
+                          fields_to_patch.append((field_name, field_type, patch_action))
 
-      - name: Sign APK
-        run: java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
+                  if not fields_to_patch:
+                      continue
 
-      - name: Upload ShikhoMax APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShikhoMax-Fully-Unlocked-APK
-          path: output_signed/*.apk
+                  # Now, inject code into constructors or static initializers to set these fields
+                  # We'll look for .method public constructor <init> and .method static <clinit>
+                  constructor_pattern = re.compile(
+                      r'(\.method\s+(?:public|private|protected)?\s+constructor\s+<init>\(.*?\)V\s*.*?\.end\s+method)',
+                      re.DOTALL
+                  )
+                  clinit_pattern = re.compile(
+                      r'(\.method\s+static\s+<clinit>\(.*?\)V\s*.*?\.end\s+method)',
+                      re.DOTALL
+                  )
+
+                  # Helper to inject field setting code
+                  def inject_field_
