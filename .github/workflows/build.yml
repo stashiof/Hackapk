@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------------------
+      # 1️⃣ Checkout source & set up tooling
+      # --------------------------------------------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -20,24 +23,33 @@ jobs:
       - name: Install Python Dependencies
         run: pip install gdown pillow
 
+      # --------------------------------------------------------------
+      # 2️⃣ Download required binaries
+      # --------------------------------------------------------------
       - name: Download Tools
         run: |
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
+      # --------------------------------------------------------------
+      # 3️⃣ Pull the original APK from Google Drive
+      # --------------------------------------------------------------
       - name: Download APKS from Google Drive
         run: gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
 
+      # --------------------------------------------------------------
+      # 4️⃣ Merge to a universal APK & decompile it
+      # --------------------------------------------------------------
       - name: Merge to Universal APK
         run: java -jar APKEditor.jar m -i my_app.apks -o merged.apk
 
       - name: Decompile APK
         run: java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      # --------------------------------------------------------------------
-      # 1. Bypass FLAG_SECURE (enable screenshots)
-      # --------------------------------------------------------------------
+      # --------------------------------------------------------------
+      # 5️⃣ Bypass FLAG_SECURE (allows screenshots)
+      # --------------------------------------------------------------
       - name: Stable Bypass FLAG_SECURE
         run: |
           echo "Applying FLAG_SECURE bypass..."
@@ -45,22 +57,22 @@ jobs:
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
           echo "FLAG_SECURE bypass applied."
 
-      # --------------------------------------------------------------------
-      # 2. Change App Name to ShikhoMax
-      # --------------------------------------------------------------------
+      # --------------------------------------------------------------
+      # 6️⃣ Change the app name to “ShikhoMax”
+      # --------------------------------------------------------------
       - name: Update App Name
         run: |
           echo "Updating app name to ShikhoMax..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
           echo "App name updated."
 
-      # --------------------------------------------------------------------
-      # 3. Replace Icons (if you supply app_icon.png)
-      # --------------------------------------------------------------------
+      # --------------------------------------------------------------
+      # 7️⃣ Replace app icons (optional – put app_icon.png at repo root)
+      # --------------------------------------------------------------
       - name: Override Icons (optional)
         run: |
           python3 - << 'EOF'
-          import os
+          import os, re
           from PIL import Image
 
           icon_src = "app_icon.png"
@@ -92,49 +104,48 @@ jobs:
                           try:
                               resized.save(out_file, format="PNG", optimize=True)
                           except Exception as e:
-                              print(f"Warning: Could not save icon to {out_file}: {e}")
-              print("Icons replaced successfully.")
+                              print(f"Warning: could not save {out_file}: {e}")
+              print("Icons replaced.")
           else:
-              print("app_icon.png not found, skipping icon override.")
+              print("app_icon.png not found – skipping icon override.")
           EOF
 
-      # --------------------------------------------------------------------
-      # 4. Advanced Smali Patching – Full Unlock Logic
-      # --------------------------------------------------------------------
+      # --------------------------------------------------------------
+      # 8️⃣ Aggressive Smali Patching – Full Unlock Logic
+      # --------------------------------------------------------------
       - name: Advanced Full Unlock Patch (Methods, Fields & Course Logic)
         run: |
           python3 - << 'EOF'
-          import os
-          import re
+          import os, re
 
           TRUE_KEYWORDS = [
-              "isUnlocked", "isEnrolled", "hasAccess", "isPurchased", "isPremium",
-              "isSubscribed", "canAccess", "isAllowed", "isAvailable", "isFree",
-              "isCourseUnlocked", "isContentUnlocked", "isResourceUnlocked",
-              "isVideoUnlocked", "isPdfUnlocked", "isLessonUnlocked", "isPaid",
-              "getIsUnlocked", "getIsEnrolled", "getHasAccess", "getIsPurchased",
-              "getIsPremium", "getIsSubscribed", "isOfflineAvailable",
-              "hasSubscription", "isPro", "isMember", "isActivated", "isAuthorized",
-              "canDownload", "isDownloadable", "isComplete", "isFinished",
-              "getCourseStatus", "getUnlockStatus", "getAccessLevel", "getFeatureStatus",
-              "isGranted", "isEligible", "hasPermission", "isPermitted", "isEnabled"
+              "isUnlocked","isEnrolled","hasAccess","isPurchased","isPremium",
+              "isSubscribed","canAccess","isAllowed","isAvailable","isFree",
+              "isCourseUnlocked","isContentUnlocked","isResourceUnlocked",
+              "isVideoUnlocked","isPdfUnlocked","isLessonUnlocked","isPaid",
+              "getIsUnlocked","getIsEnrolled","getHasAccess","getIsPurchased",
+              "getIsPremium","getIsSubscribed","isOfflineAvailable",
+              "hasSubscription","isPro","isMember","isActivated","isAuthorized",
+              "canDownload","isDownloadable","isComplete","isFinished",
+              "getCourseStatus","getUnlockStatus","getAccessLevel","getFeatureStatus",
+              "isGranted","isEligible","hasPermission","isPermitted","isEnabled"
           ]
 
           FALSE_KEYWORDS = [
-              "isLocked", "isRestricted", "requiresSubscription", "requiresPayment",
-              "isItemLocked", "isContentLocked", "isVideoLocked", "isPdfLocked",
-              "isLessonLocked", "needsPurchase", "isBlocked", "isDenied",
-              "getIsLocked", "getIsRestricted", "isTrial", "isExpired", "isPending",
-              "isForbidden", "isInvalid", "isLimited", "isFreeTrial",
-              "isRevoked", "isSuspended", "isDeactivated", "isMissingPermission"
+              "isLocked","isRestricted","requiresSubscription","requiresPayment",
+              "isItemLocked","isContentLocked","isVideoLocked","isPdfLocked",
+              "isLessonLocked","needsPurchase","isBlocked","isDenied",
+              "getIsLocked","getIsRestricted","isTrial","isExpired","isPending",
+              "isForbidden","isInvalid","isLimited","isFreeTrial",
+              "isRevoked","isSuspended","isDeactivated","isMissingPermission"
           ]
 
           ACCESS_KEYWORDS_BROAD = [
-              "lock", "unlock", "enroll", "subscribe", "premium", "paid",
-              "access", "allow", "restrict", "free", "purchase", "buy",
-              "course", "lesson", "video", "pdf", "exam", "quiz", "content", "resource",
-              "status", "state", "permission", "entitlement", "feature", "check",
-              "verify", "validate", "auth", "license", "payment", "membership", "plan"
+              "lock","unlock","enroll","subscribe","premium","paid",
+              "access","allow","restrict","free","purchase","buy",
+              "course","lesson","video","pdf","exam","quiz","content","resource",
+              "status","state","permission","entitlement","feature","check",
+              "verify","validate","auth","license","payment","membership","plan"
           ]
 
           def get_patch_action(method_name):
@@ -144,7 +155,7 @@ jobs:
               if any(k.lower() in m for k in FALSE_KEYWORDS):
                   return "FALSE"
               if any(k in m for k in ACCESS_KEYWORDS_BROAD):
-                  if any(x in m for x in ["lock", "restrict", "deny", "trial", "expire", "pending", "limit"]):
+                  if any(x in m for x in ["lock","restrict","deny","trial","expire","pending","limit"]):
                       return "FALSE"
                   return "TRUE"
               return "NONE"
@@ -152,68 +163,66 @@ jobs:
           patched_methods = 0
 
           for root, dirs, files in os.walk("decompiled_app"):
-              if "smali" not in root:
-                  continue
-              for file in files:
-                  if not file.endswith(".smali"):
-                      continue
-                  path = os.path.join(root, file)
+              if "smali" not in root: continue
+              for f in files:
+                  if not f.endswith(".smali"): continue
+                  path = os.path.join(root, f)
                   try:
-                      with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                          content = f.read()
+                      with open(path, "r", encoding="utf-8", errors="ignore") as fp:
+                          content = fp.read()
                   except Exception as e:
                       print(f"Read error {path}: {e}")
                       continue
 
                   new_content = content
-                  # Method regex: captures full block, name, and return type
-                  method_pattern = re.compile(
+                  # Regex captures the whole method block, its name and return type
+                  method_pat = re.compile(
                       r'(\.method\s+(?:(public|private|protected|static|final|\s)*)\s*(\w+)\((.*?)?\)(Z|I|J|F|D|L[^;]+;|\[[^;]+;|V)\s*.*?\.end\s+method)',
                       re.DOTALL
                   )
-                  matches = list(method_pattern.finditer(content))
+                  matches = list(method_pat.finditer(content))
                   for m in reversed(matches):
                       block = m.group(1)
                       name = m.group(3)
                       rt = m.group(5)
                       action = get_patch_action(name)
-                      if action == "NONE":
-                          continue
+                      if action == "NONE": continue
 
-                      # Build replacement body
-                      if rt == "Z":
+                      # Build replacement body based on return type
+                      if rt == "Z":          # Boolean
                           val = "0x1" if action == "TRUE" else "0x0"
                           body = f"    const/4 v0, {val}\n    return v0"
-                      elif rt == "I":
+                      elif rt == "I":        # Integer
                           val = "0x1" if action == "TRUE" else "0x0"
-                          if any(k in name.lower() for k in ["status", "level", "state"]):
+                          if any(k in name.lower() for k in ["status","level","state"]):
                               val = "0x1" if action == "TRUE" else "0x0"
                           body = f"    const/4 v0, {val}\n    return v0"
-                      elif rt == "J":
+                      elif rt == "J":        # Long
                           val = "0x1L" if action == "TRUE" else "0x0L"
                           body = f"    const-wide/16 v0, {val}\n    return-wide v0"
-                      elif rt == "F":
+                      elif rt == "F":        # Float
                           val = "0x3f800000" if action == "TRUE" else "0x0"
                           body = f"    const/high16 v0, {val}\n    return v0"
-                      elif rt == "D":
+                      elif rt == "D":        # Double
                           val = "0x3ff0000000000000L" if action == "TRUE" else "0x0L"
                           body = f"    const-wide/16 v0, {val}\n    return-wide v0"
                       elif rt == "Ljava/lang/String;":
-                          body = '    const-string v0, "FULL_ACCESS"\n    return-object v0' if action == "TRUE" else '    const/4 v0, 0x0\n    return-object v0'
-                      elif rt == "V":
-                          if any(x in name.lower() for x in ["lock", "restrict", "block", "deny", "disable"]):
+                          body = ('    const-string v0, "FULL_ACCESS"\n    return-object v0'
+                                  if action == "TRUE"
+                                  else '    const/4 v0, 0x0\n    return-object v0')
+                      elif rt == "V":        # Void
+                          if any(x in name.lower() for x in ["lock","restrict","block","deny","disable"]):
                               body = "    return-void"
                           else:
                               continue
-                      else:
-                          # For object types we use null
+                      else:                  # Object types – return null
                           body = '    const/4 v0, 0x0\n    return-object v0'
 
-                      # Insert body after .registers (or .locals)
+                      # Insert the body after .registers (or .locals)
                       lines = block.split("\n")
                       new_lines = []
                       inserted = False
-                      for i, line in enumerate(lines):
+                      for line in lines:
                           new_lines.append(line)
                           if not inserted and re.search(r'\.registers\s+\d+', line):
                               new_lines.append(body)
@@ -229,17 +238,17 @@ jobs:
 
                   if new_content != content:
                       try:
-                          with open(path, "w", encoding="utf-8") as f:
-                              f.write(new_content)
+                          with open(path, "w", encoding="utf-8") as fp:
+                              fp.write(new_content)
                       except Exception as e:
                           print(f"Write error {path}: {e}")
 
           print(f"Patched {patched_methods} methods.")
           EOF
 
-      # --------------------------------------------------------------------
-      # 5. Rebuild & Sign APK
-      # --------------------------------------------------------------------
+      # --------------------------------------------------------------
+      # 9️⃣ Rebuild, sign & upload the final APK
+      # --------------------------------------------------------------
       - name: Rebuild Optimized APK
         run: java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
 
