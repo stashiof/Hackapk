@@ -1,4 +1,4 @@
-name: ShikhoMax Download Limit Fix
+name: ShikhoMax Ultimate Auto Fix
 
 on:
   workflow_dispatch:
@@ -36,42 +36,72 @@ jobs:
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: Set Debuggable & App Name
+      - name: 🔥 ULTIMATE AUTO PATCH (Loop until all 3's are replaced)
         run: |
-          # Manifest debuggable true
-          sed -i 's/android:debuggable="false"/android:debuggable="true"/g' decompiled_app/AndroidManifest.xml
-          if ! grep -q 'android:debuggable="true"' decompiled_app/AndroidManifest.xml; then
-            sed -i 's/<application /<application android:debuggable="true" /g' decompiled_app/AndroidManifest.xml
-          fi
-          # App Name পরিবর্তন
-          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+          python3 - << 'EOF'
+          import os, re, sys
 
-      - name: 🔥 Fix Download Limit (3 → 100) DIRECT PATCH
-        run: |
-          echo "Searching for Lh30.smali and patching y() method..."
-          
-          # Lh30.smali ফাইলটি খুঁজে বের করি
-          LH30_FILE=$(find decompiled_app -name "Lh30.smali" | head -n 1)
-          
-          if [ -n "$LH30_FILE" ]; then
-            echo "Found Lh30.smali at: $LH30_FILE"
-            
-            # y() মেথড খুঁজে 3 কে 100 করি
-            sed -i '/\.method public y()I/,/\.end method/ s/const\/4 v0, 0x3/const\/16 v0, 0x64/g' "$LH30_FILE"
-            sed -i '/\.method public y()I/,/\.end method/ s/const\/16 v0, 0x3/const\/16 v0, 0x64/g' "$LH30_FILE"
-            
-            echo "✅ Lh30.smali patched successfully!"
-          else
-            echo "⚠️ Lh30.smali not found directly. Searching in all smali files..."
-            
-            # যদি সরাসরি না পাওয়া যায়, তাহলে সব smali ফাইলে y() মেথড খুঁজি
-            find decompiled_app -name "*.smali" -exec grep -l "\.method public y()I" {} \; | while read file; do
-              echo "Found y() method in: $file"
-              sed -i '/\.method public y()I/,/\.end method/ s/const\/4 v0, 0x3/const\/16 v0, 0x64/g' "$file"
-              sed -i '/\.method public y()I/,/\.end method/ s/const\/16 v0, 0x3/const\/16 v0, 0x64/g' "$file"
-            done
-            echo "✅ Patched all y() methods found."
-          fi
+          def patch_strings():
+              changes = False
+              for root, dirs, files in os.walk("decompiled_app/res"):
+                  for file in files:
+                      if file == "strings.xml":
+                          path = os.path.join(root, file)
+                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                              content = f.read()
+                          # খুঁজে বের করি ডাউনলোড বা লিমিট সম্পর্কিত স্ট্রিং
+                          if re.search(r'(?i)(download|limit|ডাউনলোড|লিমিট|ভিডিও)', content):
+                              # সব 3 কে 100 করি (শুধু মাত্র সংখ্যা)
+                              new_content = re.sub(r'(?<![0-9])3(?![0-9])', '100', content)
+                              if new_content != content:
+                                  with open(path, 'w', encoding='utf-8') as f:
+                                      f.write(new_content)
+                                  print(f"✅ Patched strings: {path}")
+                                  changes = True
+              return changes
+
+          def patch_smali():
+              changes = False
+              for root, dirs, files in os.walk("decompiled_app/smali"):
+                  for file in files:
+                      if not file.endswith(".smali"):
+                          continue
+                      path = os.path.join(root, file)
+                      with open(path, 'r', errors='ignore') as f:
+                          content = f.read()
+                      # শুধুমাত্র ডাউনলোড বা লিমিট সম্পর্কিত ফাইল
+                      if not re.search(r'(?i)(download|limit|ডাউনলোড|লিমিট)', content):
+                          continue
+                      new_content = content
+                      # 1. const/4 vX, 0x3 -> const/4 vX, 0x64
+                      new_content = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', new_content)
+                      # 2. const/16 vX, 0x3 -> const/16 vX, 0x64
+                      new_content = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', new_content)
+                      # 3. সরাসরি সংখ্যা 3 (যেমন if-ge vX, 0x3)
+                      new_content = re.sub(r'(if-[gl][te]\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', new_content)
+                      # 4. '3' as a standalone number in other contexts (like iput)
+                      new_content = re.sub(r'(iput\s+v[0-9]+,\s*p[0-9]+,\s*L[^;]*;->[^:]*:I\s+const/4\s+v[0-9]+,\s*)0x3', r'\g<1>0x64', new_content)
+                      if new_content != content:
+                          with open(path, 'w') as f:
+                              f.write(new_content)
+                          print(f"✅ Patched smali: {path}")
+                          changes = True
+              return changes
+
+          # লুপ চালাই যতক্ষণ না কোনো পরিবর্তন হয়
+          iteration = 0
+          while True:
+              iteration += 1
+              print(f"\n=== Iteration {iteration} ===")
+              changed_strings = patch_strings()
+              changed_smali = patch_smali()
+              if not changed_strings and not changed_smali:
+                  print("✅ No more changes found. Patch complete.")
+                  break
+              if iteration > 20:
+                  print("⚠️ Maximum iterations reached. Exiting loop.")
+                  break
+          EOF
 
       - name: Rebuild APK
         run: |
@@ -84,5 +114,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-Fixed-APK
+          name: ShikhoMax-Ultimate-Fix
           path: output_signed/*.apk
