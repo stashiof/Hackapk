@@ -42,8 +42,8 @@ jobs:
       - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
         run: |
           echo "Patching FLAG_SECURE safely..."
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual.*Window;->setFlags(II)V/ s/invoke-virtual/nop/' {} +
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual.*Window;->addFlags(I)V/ s/invoke-virtual/nop/' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->setFlags(II)V/ s/^/    # /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->addFlags(I)V/ s/^/    # /' {} +
 
       - name: Change App Name to ShikhoMax
         run: |
