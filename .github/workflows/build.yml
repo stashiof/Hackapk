@@ -1,51 +1,204 @@
-      - name: Apply Master SMALI Hacks (Python Automated)
+name: Build ShikhoMax Stable
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java & Python
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Python Dependencies
+        run: |
+          python3 -m pip install --user gdown pillow
+
+      - name: Download Tools
+        run: |
+          wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
+          wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v3.0.2/apktool_3.0.2.jar
+          wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Download Base APKS from Google Drive
+        run: |
+          gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
+
+      - name: Merge APKS to Universal APK
+        run: |
+          java -jar APKEditor.jar m -i my_app.apks -o merged.apk
+
+      - name: Decompile APK
+        run: |
+          java -jar apktool.jar d merged.apk -o decompiled_app -f
+
+      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
+        run: |
+          echo "Patching FLAG_SECURE safely..."
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual.*Window;->setFlags(II)V/ s/invoke-virtual/nop/' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual.*Window;->addFlags(I)V/ s/invoke-virtual/nop/' {} +
+
+      - name: Change App Name to ShikhoMax
+        run: |
+          echo "Updating App Name to ShikhoMax..."
+          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+
+      - name: Force Override Adaptive Icons & Optimize
+        run: |
+          python3 - << 'EOF'
+          import os
+          import shutil
+          from PIL import Image
+
+          icon_src = "app_icon.png"
+          if not os.path.exists(icon_src):
+              print("app_icon.png not found! Skipping icon replacement.")
+              exit(0)
+
+          # Remove all adaptive XML
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              if "anydpi" in root:
+                  for f in files:
+                      if "ic_launcher" in f and f.endswith(".xml"):
+                          os.remove(os.path.join(root, f))
+                          print(f"Removed adaptive XML: {f}")
+
+          orig = Image.open(icon_src).convert("RGBA")
+          sizes = {
+              "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
+              "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
+              "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
+          }
+          for folder, size in sizes.items():
+              dir_path = os.path.join("decompiled_app/res", folder)
+              if os.path.exists(dir_path):
+                  resized = orig.resize(size, Image.Resampling.LANCZOS)
+                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                      out_file = os.path.join(dir_path, name)
+                      resized.save(out_file, format="PNG", optimize=True)
+          print("All launcher icons replaced and optimized!")
+          EOF
+
+      # ⭐ নতুন স্টেপ: কাস্টম ওয়েলকাম পপআপ ইনজেক্ট করছে ⭐
+      - name: Inject Custom Welcome Popup
         run: |
           python3 - << 'EOF'
           import os
           import re
+          import glob
 
-          smali_dir = "decompiled_app"
+          manifest_path = "decompiled_app/AndroidManifest.xml"
+          if not os.path.exists(manifest_path):
+              print("Manifest not found!")
+              exit(0)
 
-          # Click Listeners & Routine files
-          click_listeners = ["n8.smali", "cga.smali", "cia.smali", "d22.smali", "de.smali", "dia.smali", "fo5.smali", "gha.smali", "il9.smali", "kj7.smali", "gv4.smali", "h61.smali"]
+          with open(manifest_path, 'r', encoding='utf-8') as f:
+              manifest_content = f.read()
 
-          for root, dirs, files in os.walk(smali_dir):
-              for file in files:
-                  if not file.endswith(".smali"):
-                      continue
+          # MainActivity বের করা
+          pattern = r'<activity[^>]*android:name="([^"]+)"[^>]*>.*?<action[^>]+android:name="android\.intent\.action\.MAIN"[^>]*/>'
+          matches = re.findall(pattern, manifest_content, re.DOTALL)
+          if not matches:
+              print("Main activity not found!")
+              exit(0)
 
-                  filepath = os.path.join(root, file)
-                  with open(filepath, 'r', encoding='utf-8') as f:
-                      content = f.read()
+          main_activity = matches[0]
+          package_match = re.search(r'package="([^"]+)"', manifest_content)
+          if not package_match:
+              print("Package not found!")
+              exit(0)
+          package_name = package_match.group(1)
 
-                  original_content = content
+          # স্মালি ফাইল পাথ বের করা
+          if main_activity.startswith("."):
+              smali_rel_path = f"{package_name.replace('.', '/')}/{main_activity[1:]}.smali"
+          else:
+              smali_rel_path = f"{main_activity.replace('.', '/')}.smali"
 
-                  # ১. কোর্স স্ট্যাটাস পেইড বানানো
-                  if file == "m7c.smali":
-                      patch = "    sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v11, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v12, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v16, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v3, Lh7c;"
-                      content = content.replace("    new-instance v3, Lh7c;", patch)
-                  
-                  elif file == "d8c.smali":
-                      patch = "    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v2, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v3, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v5, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v0, Lu7c;"
-                      content = content.replace("    new-instance v0, Lu7c;", patch)
+          smali_files = glob.glob(f"decompiled_app/smali*/{smali_rel_path}")
+          if not smali_files:
+              print(f"Smali file not found for {smali_rel_path}")
+              exit(0)
+          smali_path = smali_files[0]
+          print(f"Found Smali: {smali_path}")
 
-                  # ২. Click Listeners ও রুটিন হ্যাক (ReadOnly -> Unlocked)
-                  elif file in click_listeners:
-                      content = re.sub(r'const-string (v\d+), "ReadOnly"', r'const-string \1, "Unlocked"', content)
+          with open(smali_path, 'r', encoding='utf-8') as f:
+              lines = f.readlines()
 
-                  # ৩. দ্য আল্টিমেট মাস্টার হ্যাক (h30.smali) - Access Level & Download Limit
-                  elif file == "h30.smali":
-                      content = re.sub(r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
-                                       '.method public final d()Ljava/lang/String;\n    .registers 2\n\n    const-string v0, "Full"\n\n    return-object v0\n.end method',
-                                       content, flags=re.DOTALL)
-                      
-                      content = re.sub(r'\.method public final y\(\)I.*?\.end method',
-                                       '.method public final y()I\n    .registers 2\n\n    const/16 v0, 0x270f\n\n    return v0\n.end method',
-                                       content, flags=re.DOTALL)
+          # ডায়ালগের স্মালি কোড (কাস্টম মেসেজ)
+          dialog_smali = [
+              '    new-instance v3, Landroid/app/AlertDialog$Builder;\n',
+              '    invoke-direct {v3, p0}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;)V\n',
+              '    const-string v4, "🎉 Welcome to ShikhoMax"\n',
+              '    invoke-virtual {v3, v4}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;\n',
+              '    const-string v4, "Thank you for choosing ShikhoMax!\\n\\nEnjoy all premium features unlocked."\n',
+              '    invoke-virtual {v3, v4}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;\n',
+              '    const-string v4, "Get Started"\n',
+              '    const/4 v5, 0x0\n',
+              '    invoke-virtual {v3, v4, v5}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;\n',
+              '    invoke-virtual {v3}, Landroid/app/AlertDialog$Builder;->create()Landroid/app/AlertDialog;\n',
+              '    move-result-object v3\n',
+              '    invoke-virtual {v3}, Landroid/app/AlertDialog;->show()V\n',
+          ]
 
-                  # ফাইলে কোনো পরিবর্তন হলে সেটি সেভ করা
-                  if content != original_content:
-                      with open(filepath, 'w', encoding='utf-8') as f:
-                          f.write(content)
-                      print(f"✅ Successfully Patched: {file}")
+          # `onCreate` এর ভেতরে `invoke-super` এর পর ইনজেক্ট করা
+          injected = False
+          target_line = "invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V"
+          for i, line in enumerate(lines):
+              if target_line in line:
+                  lines = lines[:i+1] + dialog_smali + lines[i+1:]
+                  injected = True
+                  break
+
+          # ব্যাকআপ: যদি না পাওয়া যায়, তবে শেষের `return-void` এর আগে ইনজেক্ট
+          if not injected:
+              for i, line in enumerate(lines):
+                  if "return-void" in line and "onCreate" in ''.join(lines[max(0,i-5):i+1]):
+                      lines = lines[:i] + dialog_smali + lines[i:]
+                      injected = True
+                      break
+
+          if not injected:
+              print("Failed to inject popup!")
+              exit(1)
+
+          # `.locals` আপডেট করে রেজিস্টার নিশ্চিত করা (v3,v4,v5 ব্যবহার করছি)
+          for i, line in enumerate(lines):
+              if line.startswith(".locals"):
+                  parts = line.split()
+                  if len(parts) > 1:
+                      try:
+                          current = int(parts[1])
+                          if current < 6:
+                              lines[i] = f".locals {6}\n"
+                              print(f"Updated .locals from {current} to 6")
+                      except:
+                          pass
+                  break
+
+          with open(smali_path, 'w', encoding='utf-8') as f:
+              f.writelines(lines)
+
+          print("✅ Custom welcome popup injected successfully!")
           EOF
+
+      - name: Rebuild Optimized APK
+        run: |
+          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
+
+      - name: Sign APK
+        run: |
+          java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
+
+      - name: Upload ShikhoMax APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShikhoMax-Stable-APK
+          path: output_signed/*.apk
