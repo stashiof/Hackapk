@@ -1,7 +1,6 @@
-name: ShikhoMax Ultimate Auto Fix
+name: Build ShikhoMax Stable
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
   build:
@@ -17,14 +16,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Download Tools
+      - name: Download Tools & Setup
         run: |
-          pip install gdown
+          pip install gdown pillow
           wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
-      - name: Download APKS
+      - name: Download APKS from Google Drive
         run: |
           gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
 
@@ -36,83 +35,133 @@ jobs:
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
 
-      - name: 🔥 ULTIMATE AUTO PATCH (Loop until all 3's are replaced)
+      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
+        run: |
+          echo "Patching FLAG_SECURE..."
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
+
+      - name: Apply Master SMALI Hacks (Python Automated)
         run: |
           python3 - << 'EOF'
-          import os, re, sys
+          import os
+          import re
 
-          def patch_strings():
-              changes = False
-              for root, dirs, files in os.walk("decompiled_app/res"):
-                  for file in files:
-                      if file == "strings.xml":
-                          path = os.path.join(root, file)
-                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                              content = f.read()
-                          # খুঁজে বের করি ডাউনলোড বা লিমিট সম্পর্কিত স্ট্রিং
-                          if re.search(r'(?i)(download|limit|ডাউনলোড|লিমিট|ভিডিও)', content):
-                              # সব 3 কে 100 করি (শুধু মাত্র সংখ্যা)
-                              new_content = re.sub(r'(?<![0-9])3(?![0-9])', '100', content)
-                              if new_content != content:
-                                  with open(path, 'w', encoding='utf-8') as f:
-                                      f.write(new_content)
-                                  print(f"✅ Patched strings: {path}")
-                                  changes = True
-              return changes
+          smali_dir = "decompiled_app"
 
-          def patch_smali():
-              changes = False
-              for root, dirs, files in os.walk("decompiled_app/smali"):
-                  for file in files:
-                      if not file.endswith(".smali"):
-                          continue
-                      path = os.path.join(root, file)
-                      with open(path, 'r', errors='ignore') as f:
-                          content = f.read()
-                      # শুধুমাত্র ডাউনলোড বা লিমিট সম্পর্কিত ফাইল
-                      if not re.search(r'(?i)(download|limit|ডাউনলোড|লিমিট)', content):
-                          continue
-                      new_content = content
-                      # 1. const/4 vX, 0x3 -> const/4 vX, 0x64
-                      new_content = re.sub(r'(const/4\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', new_content)
-                      # 2. const/16 vX, 0x3 -> const/16 vX, 0x64
-                      new_content = re.sub(r'(const/16\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', new_content)
-                      # 3. সরাসরি সংখ্যা 3 (যেমন if-ge vX, 0x3)
-                      new_content = re.sub(r'(if-[gl][te]\s+v[0-9]+,\s*)0x3\b', r'\g<1>0x64', new_content)
-                      # 4. '3' as a standalone number in other contexts (like iput)
-                      new_content = re.sub(r'(iput\s+v[0-9]+,\s*p[0-9]+,\s*L[^;]*;->[^:]*:I\s+const/4\s+v[0-9]+,\s*)0x3', r'\g<1>0x64', new_content)
-                      if new_content != content:
-                          with open(path, 'w') as f:
-                              f.write(new_content)
-                          print(f"✅ Patched smali: {path}")
-                          changes = True
-              return changes
+          # টার্গেট ফাইলগুলোর লিস্ট
+          click_listeners = ["cga.smali", "cia.smali", "d22.smali", "de.smali", "dia.smali", "fo5.smali", "gha.smali", "il9.smali", "kj7.smali", "gv4.smali", "h61.smali"]
+          parsers_full = ["zd6.smali", "er6.smali", "mx6.smali", "qse.smali"]
+          parsers_date = ["b46.smali", "lu5.smali", "qt5.smali"]
 
-          # লুপ চালাই যতক্ষণ না কোনো পরিবর্তন হয়
-          iteration = 0
-          while True:
-              iteration += 1
-              print(f"\n=== Iteration {iteration} ===")
-              changed_strings = patch_strings()
-              changed_smali = patch_smali()
-              if not changed_strings and not changed_smali:
-                  print("✅ No more changes found. Patch complete.")
-                  break
-              if iteration > 20:
-                  print("⚠️ Maximum iterations reached. Exiting loop.")
-                  break
+          for root, dirs, files in os.walk(smali_dir):
+              for file in files:
+                  if not file.endswith(".smali"):
+                      continue
+
+                  filepath = os.path.join(root, file)
+                  with open(filepath, 'r', encoding='utf-8') as f:
+                      content = f.read()
+
+                  original_content = content
+
+                  # ১. কোর্স স্ট্যাটাস পেইড বানানো
+                  if file == "m7c.smali":
+                      patch = "    sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v11, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v12, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v16, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v3, Lh7c;"
+                      content = content.replace("    new-instance v3, Lh7c;", patch)
+                  
+                  elif file == "d8c.smali":
+                      patch = "    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v2, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v3, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v5, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v0, Lu7c;"
+                      content = content.replace("    new-instance v0, Lu7c;", patch)
+
+                  # ২. "ফ্রিতে শেখা শেষ" ব্যাজ সরানো (২০৯৯ সাল)
+                  elif file in parsers_date:
+                      # check-cast vX, Ljava/lang/String; খুঁজে বের করে তার নিচে ডেট বসানো
+                      content = re.sub(r'(check-cast (v\d+), Ljava/lang/String;)', r'\1\n\n    const-string \2, "2099-12-31T17:59:59Z"', content)
+
+                  # ৩. রুটিনের ভিডিও আনলক করা
+                  elif file == "n8.smali":
+                      content = content.replace('const-string v2, "ReadOnly"', 'const-string v2, "Full"')
+
+                  # ৪. Click Listeners হ্যাক (ReadOnly -> Unlocked)
+                  elif file in click_listeners:
+                      content = re.sub(r'const-string (v\d+), "ReadOnly"', r'const-string \1, "Unlocked"', content)
+
+                  # ৫. GraphQL Parsers (Full)
+                  elif file in parsers_full:
+                      content = re.sub(r'(check-cast (v\d+), Ljava/lang/String;)', r'\1\n\n    const-string \2, "Full"', content)
+
+                  # ৬. দ্য আল্টিমেট মাস্টার হ্যাক (h30.smali) - Access Level & Download Limit
+                  elif file == "h30.smali":
+                      content = re.sub(r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
+                                       '.method public final d()Ljava/lang/String;\n    .registers 2\n\n    const-string v0, "Full"\n\n    return-object v0\n.end method',
+                                       content, flags=re.DOTALL)
+                      
+                      content = re.sub(r'\.method public final y\(\)I.*?\.end method',
+                                       '.method public final y()I\n    .registers 2\n\n    const/16 v0, 0x270f\n\n    return v0\n.end method',
+                                       content, flags=re.DOTALL)
+
+                  # ফাইলে কোনো পরিবর্তন হলে সেটি সেভ করা
+                  if content != original_content:
+                      with open(filepath, 'w', encoding='utf-8') as f:
+                          f.write(content)
+                      print(f"✅ Successfully Patched: {file}")
           EOF
 
-      - name: Rebuild APK
+      - name: Change App Name to ShikhoMax
         run: |
-          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
+          echo "Updating App Name to ShikhoMax..."
+          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+
+      - name: Force Override Adaptive Icons & Compress
+        run: |
+          python3 - << 'EOF'
+          import os
+          import shutil
+          from PIL import Image
+
+          icon_src = "app_icon.png"
+          if not os.path.exists(icon_src):
+              print("app_icon.png not found! Skipping icon override.")
+              exit(0)
+
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              if "anydpi" in root:
+                  for f in files:
+                      if "ic_launcher" in f and f.endswith(".xml"):
+                          os.remove(os.path.join(root, f))
+                          print(f"Removed adaptive XML: {f}")
+
+          orig = Image.open(icon_src).convert("RGBA")
+          sizes = {
+              "mipmap-mdpi": (48, 48),
+              "mipmap-hdpi": (72, 72),
+              "mipmap-xhdpi": (96, 96),
+              "mipmap-xxhdpi": (144, 144),
+              "mipmap-xxxhdpi": (192, 192),
+              "drawable": (192, 192)
+          }
+
+          for folder, size in sizes.items():
+              dir_path = os.path.join("decompiled_app/res", folder)
+              if os.path.exists(dir_path):
+                  resized = orig.resize(size, Image.Resampling.LANCZOS)
+                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                      out_file = os.path.join(dir_path, name)
+                      resized.save(out_file, format="PNG", optimize=True)
+          print("✅ All launcher icons fully replaced and optimized!")
+          EOF
+
+      - name: Rebuild Optimized APK
+        run: |
+          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk --use-aapt2
 
       - name: Sign APK
         run: |
           java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
 
-      - name: Upload APK
+      - name: Upload ShikhoMax APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-Ultimate-Fix
+          name: ShikhoMax-Stable-APK
           path: output_signed/*.apk
