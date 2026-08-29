@@ -1,4 +1,90 @@
-      # ⭐ নতুন পপআপ ইনজেকশন (রোবাস্ট ও ফ্লেক্সিবল ভার্সন) ⭐
+name: Build ShikhoMax Stable
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java & Python
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Python Dependencies
+        run: |
+          python3 -m pip install --user gdown pillow
+
+      - name: Download Tools
+        run: |
+          wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
+          wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v3.0.2/apktool_3.0.2.jar
+          wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Download Base APKS from Google Drive
+        run: |
+          gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
+
+      - name: Merge APKS to Universal APK
+        run: |
+          java -jar APKEditor.jar m -i my_app.apks -o merged.apk
+
+      - name: Decompile APK
+        run: |
+          java -jar apktool.jar d merged.apk -o decompiled_app -f
+
+      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
+        run: |
+          echo "Patching FLAG_SECURE safely..."
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual.*Window;->setFlags(II)V/ s/invoke-virtual/nop/' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual.*Window;->addFlags(I)V/ s/invoke-virtual/nop/' {} +
+
+      - name: Change App Name to ShikhoMax
+        run: |
+          echo "Updating App Name to ShikhoMax..."
+          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+
+      - name: Force Override Adaptive Icons & Optimize
+        run: |
+          python3 - << 'EOF'
+          import os
+          import shutil
+          from PIL import Image
+
+          icon_src = "app_icon.png"
+          if not os.path.exists(icon_src):
+              print("app_icon.png not found! Skipping icon replacement.")
+              exit(0)
+
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              if "anydpi" in root:
+                  for f in files:
+                      if "ic_launcher" in f and f.endswith(".xml"):
+                          os.remove(os.path.join(root, f))
+                          print(f"Removed adaptive XML: {f}")
+
+          orig = Image.open(icon_src).convert("RGBA")
+          sizes = {
+              "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
+              "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
+              "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
+          }
+          for folder, size in sizes.items():
+              dir_path = os.path.join("decompiled_app/res", folder)
+              if os.path.exists(dir_path):
+                  resized = orig.resize(size, Image.Resampling.LANCZOS)
+                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                      out_file = os.path.join(dir_path, name)
+                      resized.save(out_file, format="PNG", optimize=True)
+          print("All launcher icons replaced and optimized!")
+          EOF
+
       - name: Inject Custom Welcome Popup (Robust)
         run: |
           python3 - << 'EOF'
@@ -66,12 +152,10 @@
               '    invoke-virtual {v3}, Landroid/app/AlertDialog;->show()V\n',
           ]
 
-          # ফ্লেক্সিবল মেথড সার্চ লজিক
           method_start = -1
           method_end = -1
           inside_method = False
           
-          # ১. প্রথমে onCreate খুঁজি
           for i, line in enumerate(lines):
               if line.strip().startswith('.method') and ' onCreate(' in line:
                   method_start = i
@@ -80,7 +164,6 @@
                   method_end = i
                   break
 
-          # ২. না পেলে onStart বা onResume খুঁজি
           if method_start == -1:
               for i, line in enumerate(lines):
                   if line.strip().startswith('.method') and (' onStart(' in line or ' onResume(' in line):
@@ -90,7 +173,6 @@
                       method_end = i
                       break
 
-          # ৩. তাও না পেলে <init> (কনস্ট্রাক্টর) খুঁজি
           if method_start == -1:
               print("No lifecycle method found (onCreate/onStart/onResume)!")
               for i, line in enumerate(lines):
@@ -142,3 +224,17 @@
 
           print('✅ Custom welcome popup injected successfully!')
           EOF
+
+      - name: Rebuild Optimized APK
+        run: |
+          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
+
+      - name: Sign APK
+        run: |
+          java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
+
+      - name: Upload ShikhoMax APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShikhoMax-Stable-APK
+          path: output_signed/*.apk
