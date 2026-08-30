@@ -51,7 +51,6 @@ jobs:
           xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
           apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
           
-          # আউটপুট ফাইলের নাম merged.apk দেওয়া হয়েছে যাতে পরের ধাপে ডিকম্পাইল হতে পারে
           if [ -n "$apks_file" ]; then
             echo "APKS bundle detected. Merging..."
             java -jar APKEditor.jar m -i "$apks_file" -o merged.apk
@@ -87,6 +86,40 @@ jobs:
           echo "Updating App Name to ShikhoMax..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
 
+      - name: Replace & Compress Onboarding Images
+        run: |
+          python3 - << 'EOF'
+          import os
+          from PIL import Image
+
+          onboarding_images = ["new_onboarding_img_1.png", "new_onboarding_img_2.png"]
+
+          for img_name in onboarding_images:
+              if os.path.exists(img_name):
+                  print(f"Compressing {img_name}...")
+                  orig = Image.open(img_name).convert("RGBA")
+                  # ২৫৬ কালার প্যালেটে কনভার্ট করা হচ্ছে (এতে সাইজ অর্ধেকেরও বেশি কমে যাবে)
+                  optimized_img = orig.convert("P", palette=Image.ADAPTIVE, colors=256)
+                  
+                  replaced = False
+                  # অ্যাপের যেখানেই এই নামের ছবি থাকুক, সেখানেই রিপ্লেস করবে
+                  for root, dirs, files in os.walk("decompiled_app/res"):
+                      if img_name in files:
+                          target_path = os.path.join(root, img_name)
+                          optimized_img.save(target_path, format="PNG", optimize=True)
+                          print(f"Replaced and compressed at: {target_path}")
+                          replaced = True
+                  
+                  # যদি আগে থেকে না থাকে, তাহলে সরাসরি drawable ফোল্ডারে সেভ করবে
+                  if not replaced:
+                      fallback_path = os.path.join("decompiled_app/res/drawable", img_name)
+                      os.makedirs(os.path.dirname(fallback_path), exist_ok=True)
+                      optimized_img.save(fallback_path, format="PNG", optimize=True)
+                      print(f"Added and compressed at: {fallback_path}")
+              else:
+                  print(f"Warning: {img_name} not found in the GitHub repository!")
+          EOF
+
       - name: Force Override Adaptive Icons & Compress
         run: |
           python3 - << 'EOF'
@@ -99,7 +132,6 @@ jobs:
               print("app_icon.png not found!")
               exit(0)
 
-          # অ্যাডাপ্টিভ আইকন এক্সএমএল রিমুভ করা যাতে ফোর্সফুলি নতুন PNG শো করে
           for root, dirs, files in os.walk("decompiled_app/res"):
               if "anydpi" in root:
                   for f in files:
@@ -107,7 +139,6 @@ jobs:
                           os.remove(os.path.join(root, f))
                           print(f"Removed adaptive XML: {f}")
 
-          # ইমেজ অপটিমাইজেশন (২০-৩০ কেবি এবং হাই কোয়ালিটি)
           orig = Image.open(icon_src).convert("RGBA")
           sizes = {
               "mipmap-mdpi": (48, 48),
