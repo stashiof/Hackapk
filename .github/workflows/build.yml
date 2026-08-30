@@ -17,23 +17,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
       - name: Download Tools
         run: |
-          # 404 Error Fix: V1.4.9 এর বদলে সঠিক V1.4.1 লিংক দেওয়া হয়েছে
-          wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          wget -q -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
-          wget -q -O apkeep https://github.com/EFForg/apkeep/releases/download/0.8.0/apkeep-x86_64-unknown-linux-musl
+          # Download APKEditor
+          curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
+          
+          # Download uber-apk-signer
+          curl -fSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          
+          # Download apkeep (Standalone Binary)
+          curl -fSL -o apkeep.tar.gz https://github.com/EFForg/apkeep/releases/download/0.8.0/apkeep-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf apkeep.tar.gz
           chmod +x apkeep
 
       - name: Download App from Play Store
         run: |
           echo "Downloading ${{ github.event.inputs.package_name }} from Google Play..."
-          mkdir downloaded_apks
+          mkdir -p downloaded_apks
           ./apkeep -a ${{ github.event.inputs.package_name }} downloaded_apks/
 
       - name: Process and Merge to Universal APK
