@@ -121,29 +121,23 @@ jobs:
                           resized.save(out_file, format="PNG", optimize=True)
           EOF
 
-      - name: Apply Master Hack (Course, Badge, Routine & Listeners)
+      - name: Apply Master Hack (Course, Badge, Routine & Parsers)
         run: |
-          echo "Applying Core Hacks..."
+          echo "Applying Core Hacks without 'Unlocked' modifications..."
           
           # Step 1: Course Status
           find decompiled_app -name "m7c.smali" -exec sed -i 's|new-instance v3, Lh7c;|    sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v11, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v12, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v16, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v3, Lh7c;|g' {} +
           find decompiled_app -name "d8c.smali" -exec sed -i 's|new-instance v0, Lu7c;|    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v2, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v3, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v5, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v0, Lu7c;|g' {} +
           
-          # Step 2: Badge Extender
-          find decompiled_app -name "b46.smali" -exec sed -i 's|check-cast v7, Ljava/lang/String;|check-cast v7, Ljava/lang/String;\n\n    const-string v7, "2099-12-31T17:59:59Z"|g' {} +
-          find decompiled_app -name "lu5.smali" -exec sed -i 's|check-cast v7, Ljava/lang/String;|check-cast v7, Ljava/lang/String;\n\n    const-string v7, "2099-12-31T17:59:59Z"|g' {} +
-          find decompiled_app -name "qt5.smali" -exec sed -i 's|check-cast v0, Ljava/lang/String;|check-cast v0, Ljava/lang/String;\n\n    const-string v0, "2099-12-31T17:59:59Z"|g' {} +
+          # Step 2: Badge Extender (2099)
+          find decompiled_app -name "b46.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "2099-12-31T17:59:59Z"|g' {} +
+          find decompiled_app -name "lu5.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "2099-12-31T17:59:59Z"|g' {} +
+          find decompiled_app -name "qt5.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "2099-12-31T17:59:59Z"|g' {} +
           
           # Step 3: Routine Video Fix
           find decompiled_app -name "n8.smali" -exec sed -i 's|"ReadOnly"|"Full"|g' {} +
           
-          # Step 4: Click Listeners (Targeted 11 Files)
-          FILES="cga.smali cia.smali d22.smali de.smali dia.smali fo5.smali gha.smali il9.smali kj7.smali gv4.smali h61.smali"
-          for file in $FILES; do
-            find decompiled_app -name "$file" -exec sed -i 's|"ReadOnly"|"Unlocked"|g' {} +
-          done
-
-          # Step 5: Live Class Parsers
+          # Step 4: Live Class & Access Level Parsers (Direct Parser Surgery)
           find decompiled_app -name "zd6.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
           find decompiled_app -name "er6.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
           find decompiled_app -name "mx6.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
