@@ -1,7 +1,12 @@
-name: Build ShikhoMax Stable
+name: PlayStore to Universal APK
 
 on:
   workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'App Package Name'
+        required: true
+        default: 'tech.shikho.android'
 
 jobs:
   build:
@@ -11,230 +16,52 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java & Python
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Python Dependencies
-        run: |
-          python3 -m pip install --user gdown pillow
-
       - name: Download Tools
         run: |
-          wget -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
-          wget -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v3.0.2/apktool_3.0.2.jar
-          wget -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
+          wget -q -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          wget -q -O apkeep https://github.com/EFForg/apkeep/releases/download/0.8.0/apkeep-x86_64-unknown-linux-gnu
+          chmod +x apkeep
 
-      - name: Download Base APKS from Google Drive
+      - name: Download App from Play Store
         run: |
-          gdown "https://drive.google.com/uc?id=16T63abl_dBwnS3DJ3LlornCLle_khN20" -O my_app.apks
+          echo "Downloading ${{ github.event.inputs.package_name }} from Google Play..."
+          mkdir downloaded_apks
+          ./apkeep -a ${{ github.event.inputs.package_name }} downloaded_apks/
 
-      - name: Merge APKS to Universal APK
+      - name: Process and Merge to Universal APK
         run: |
-          java -jar APKEditor.jar m -i my_app.apks -o merged.apk
-
-      - name: Decompile APK
-        run: |
-          java -jar apktool.jar d merged.apk -o decompiled_app -f
-
-      - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
-        run: |
-          echo "Patching FLAG_SECURE safely..."
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->setFlags(II)V/ s/^/    # /' {} +
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->addFlags(I)V/ s/^/    # /' {} +
-
-      - name: Change App Name to ShikhoMax
-        run: |
-          echo "Updating App Name to ShikhoMax..."
-          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
-
-      - name: Force Override Adaptive Icons & Optimize
-        run: |
-          python3 - << 'EOF'
-          import os
-          import shutil
-          from PIL import Image
-
-          icon_src = "app_icon.png"
-          if not os.path.exists(icon_src):
-              print("app_icon.png not found! Skipping icon replacement.")
-              exit(0)
-
-          for root, dirs, files in os.walk("decompiled_app/res"):
-              if "anydpi" in root:
-                  for f in files:
-                      if "ic_launcher" in f and f.endswith(".xml"):
-                          os.remove(os.path.join(root, f))
-                          print(f"Removed adaptive XML: {f}")
-
-          orig = Image.open(icon_src).convert("RGBA")
-          sizes = {
-              "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
-              "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
-              "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
-          }
-          for folder, size in sizes.items():
-              dir_path = os.path.join("decompiled_app/res", folder)
-              if os.path.exists(dir_path):
-                  resized = orig.resize(size, Image.Resampling.LANCZOS)
-                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
-                      out_file = os.path.join(dir_path, name)
-                      resized.save(out_file, format="PNG", optimize=True)
-          print("All launcher icons replaced and optimized!")
-          EOF
-
-      - name: Inject Custom Welcome Popup (Robust)
-        run: |
-          python3 - << 'EOF'
-          import os
-          import re
-          import glob
-          import xml.etree.ElementTree as ET
-
-          manifest_path = "decompiled_app/AndroidManifest.xml"
-          if not os.path.exists(manifest_path):
-              print("Manifest not found!")
-              exit(0)
-
-          tree = ET.parse(manifest_path)
-          root = tree.getroot()
-          ns = {'android': 'http://schemas.android.com/apk/res/android'}
-
-          package = root.get('package')
-          if not package:
-              print("Package not found!")
-              exit(0)
-
-          launcher_activity = None
-          for activity in root.findall('application/activity'):
-              intent_filter = activity.find('intent-filter')
-              if intent_filter is not None:
-                  for action in intent_filter.findall('action'):
-                      if action.get('{http://schemas.android.com/apk/res/android}name') == 'android.intent.action.MAIN':
-                          launcher_activity = activity.get('{http://schemas.android.com/apk/res/android}name')
-                          break
-                  if launcher_activity:
-                      break
-
-          if not launcher_activity:
-              print("No LAUNCHER activity found!")
-              exit(0)
-
-          if launcher_activity.startswith('.'):
-              smali_rel = f"{package.replace('.', '/')}{launcher_activity}.smali"
-          else:
-              smali_rel = f"{launcher_activity.replace('.', '/')}.smali"
-
-          smali_files = glob.glob(f"decompiled_app/smali*/{smali_rel}")
-          if not smali_files:
-              print(f"Smali file not found for {smali_rel}")
-              exit(0)
-          smali_path = smali_files[0]
-          print(f"Found LAUNCHER activity smali: {smali_path}")
-
-          with open(smali_path, 'r', encoding='utf-8') as f:
-              lines = f.readlines()
-
-          dialog_smali = [
-              '    new-instance v3, Landroid/app/AlertDialog$Builder;\n',
-              '    invoke-direct {v3, p0}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;)V\n',
-              '    const-string v4, "🎉 Welcome to ShikhoMax"\n',
-              '    invoke-virtual {v3, v4}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;\n',
-              '    const-string v4, "Thank you for choosing ShikhoMax!\\n\\nEnjoy all premium features unlocked."\n',
-              '    invoke-virtual {v3, v4}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;\n',
-              '    const-string v4, "Get Started"\n',
-              '    const/4 v5, 0x0\n',
-              '    invoke-virtual {v3, v4, v5}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;\n',
-              '    invoke-virtual {v3}, Landroid/app/AlertDialog$Builder;->create()Landroid/app/AlertDialog;\n',
-              '    move-result-object v3\n',
-              '    invoke-virtual {v3}, Landroid/app/AlertDialog;->show()V\n',
-          ]
-
-          method_start = -1
-          method_end = -1
-          inside_method = False
+          cd downloaded_apks
+          count=$(ls *.apk 2>/dev/null | wc -l)
           
-          for i, line in enumerate(lines):
-              if line.strip().startswith('.method') and ' onCreate(' in line:
-                  method_start = i
-                  inside_method = True
-              if inside_method and line.strip().startswith('.end method'):
-                  method_end = i
-                  break
+          if [ "$count" -gt "1" ]; then
+            echo "Split APKs detected ($count files). Packing to .apks..."
+            zip -q -r ../app.apks *
+            cd ..
+            echo "Merging APKS to Universal APK..."
+            java -jar APKEditor.jar m -i app.apks -o universal.apk
+          elif [ "$count" -eq "1" ]; then
+            echo "Single APK detected. No merge required."
+            cd ..
+            cp downloaded_apks/*.apk universal.apk
+          else
+            echo "Error: No APK files found! The app might be paid or blocked."
+            exit 1
+          fi
 
-          if method_start == -1:
-              for i, line in enumerate(lines):
-                  if line.strip().startswith('.method') and (' onStart(' in line or ' onResume(' in line):
-                      method_start = i
-                      inside_method = True
-                  if inside_method and line.strip().startswith('.end method'):
-                      method_end = i
-                      break
-
-          if method_start == -1:
-              print("No lifecycle method found (onCreate/onStart/onResume)!")
-              for i, line in enumerate(lines):
-                  if line.strip().startswith('.method') and (' <init>(' in line or ' constructor' in line):
-                      method_start = i
-                      inside_method = True
-                  if inside_method and line.strip().startswith('.end method'):
-                      method_end = i
-                      break
-
-          if method_start == -1:
-              print("Failed to find any method to inject!")
-              exit(1)
-
-          injected = False
-          for i in range(method_start, method_end):
-              if 'invoke-super' in lines[i] and ('onCreate' in lines[i] or 'onStart' in lines[i] or 'onResume' in lines[i]):
-                  insert_pos = i + 1
-                  lines = lines[:insert_pos] + dialog_smali + lines[insert_pos:]
-                  injected = True
-                  break
-
-          if not injected:
-              for i in range(method_end-1, method_start-1, -1):
-                  if 'return-void' in lines[i]:
-                      lines = lines[:i] + dialog_smali + lines[i:]
-                      injected = True
-                      break
-
-          if not injected:
-              print("Could not find a suitable injection point!")
-              exit(1)
-
-          for i, line in enumerate(lines):
-              if line.strip().startswith('.locals'):
-                  parts = line.split()
-                  if len(parts) > 1:
-                      try:
-                          current = int(parts[1])
-                          if current < 6:
-                              lines[i] = f'    .locals 6\n'
-                              print(f'Updated .locals from {current} to 6')
-                      except:
-                          pass
-                  break
-
-          with open(smali_path, 'w', encoding='utf-8') as f:
-              f.writelines(lines)
-
-          print('✅ Custom welcome popup injected successfully!')
-          EOF
-
-      - name: Rebuild Optimized APK
+      - name: Sign Universal APK
         run: |
-          java -jar apktool.jar b decompiled_app -o shikhomax_unsigned.apk
+          echo "Signing the APK..."
+          java -jar uber-apk-signer.jar -a universal.apk -o output_signed/
 
-      - name: Sign APK
-        run: |
-          java -jar uber-apk-signer.jar --apks shikhomax_unsigned.apk -o output_signed/
-
-      - name: Upload ShikhoMax APK
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ShikhoMax-Stable-APK
+          name: Universal-APK-${{ github.event.inputs.package_name }}
           path: output_signed/*.apk
