@@ -28,21 +28,24 @@ jobs:
           python-version: '3.10'
 
       - name: Download Tools & Setup Environment
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
         run: |
-          # APKEditor ডাউনলোড
+          # APKEditor ও Signer ডাউনলোড
           curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          
-          # uber-apk-signer ডাউনলোড
           curl -fSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
           
-          # Python Play Store Downloader লাইব্রেরি সেটআপ
+          # Protobuf কনফ্লিক্ট ফিক্স
+          python3 -m pip install --upgrade pip
+          pip install "protobuf<=3.20.3"
           pip install gplaycli
 
       - name: Download App from Play Store
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
         run: |
           echo "Downloading ${{ github.event.inputs.package_name }} from Google Play..."
           mkdir -p downloaded_apks
-          # gplaycli দিয়ে স্প্লিট এপিকেসহ ডাউনলোড
           gplaycli -d ${{ github.event.inputs.package_name }} -f downloaded_apks/ --splits || true
 
       - name: Process and Merge to Universal APK
