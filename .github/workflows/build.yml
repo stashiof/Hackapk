@@ -30,11 +30,12 @@ jobs:
           echo "Installing apkeep via Cargo..."
           cargo install apkeep
 
-      - name: Download App from Play Store
+      - name: Download App (All Architectures)
         run: |
-          echo "Downloading ${{ github.event.inputs.package_name }} from Google Play..."
+          echo "Downloading ${{ github.event.inputs.package_name }} (Full Bundle)..."
           mkdir -p downloaded_apks
-          apkeep -a ${{ github.event.inputs.package_name }} downloaded_apks/
+          # -d apkpure ব্যবহার করে প্লে স্টোরের বদলে সরাসরি ফুল বান্ডেল নামানো হচ্ছে
+          apkeep -d apkpure -a ${{ github.event.inputs.package_name }} downloaded_apks/
 
       - name: Process and Merge to Universal APK
         run: |
