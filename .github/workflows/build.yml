@@ -74,31 +74,34 @@ jobs:
         run: |
           echo "Applying Master Hack..."
           
-          # Step 1: Course Status Paid (m7c.smali & d8c.smali)
-          find decompiled_app -name "m7c.smali" -exec sed -i '/new-instance v3, Lh7c;/i \    sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v11, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v12, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v16, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n' {} +
-          find decompiled_app -name "d8c.smali" -exec sed -i '/new-instance v0, Lu7c;/i \    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v2, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v3, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v5, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n' {} +
+          # Step 1: Course Status Paid (Robust Substitute)
+          find decompiled_app -name "m7c.smali" -exec sed -i 's|new-instance v3, Lh7c;|    sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v11, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v12, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v16, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v3, Lh7c;|g' {} +
+          find decompiled_app -name "d8c.smali" -exec sed -i 's|new-instance v0, Lu7c;|    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v2, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v3, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v5, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n\n    new-instance v0, Lu7c;|g' {} +
           
-          # Step 2: Extend Free Trial Badge (b46, lu5, qt5)
-          find decompiled_app -name "b46.smali" -exec sed -i '/check-cast v7, Ljava\/lang\/String;/a \    const-string v7, "2099-12-31T17:59:59Z"' {} +
-          find decompiled_app -name "lu5.smali" -exec sed -i '/check-cast v7, Ljava\/lang\/String;/a \    const-string v7, "2099-12-31T17:59:59Z"' {} +
-          find decompiled_app -name "qt5.smali" -exec sed -i '/check-cast v0, Ljava\/lang\/String;/a \    const-string v0, "2099-12-31T17:59:59Z"' {} +
+          # Step 2: Extend Free Trial Badge (Robust Substitute)
+          find decompiled_app -name "b46.smali" -exec sed -i 's|check-cast v7, Ljava/lang/String;|check-cast v7, Ljava/lang/String;\n\n    const-string v7, "2099-12-31T17:59:59Z"|g' {} +
+          find decompiled_app -name "lu5.smali" -exec sed -i 's|check-cast v7, Ljava/lang/String;|check-cast v7, Ljava/lang/String;\n\n    const-string v7, "2099-12-31T17:59:59Z"|g' {} +
+          find decompiled_app -name "qt5.smali" -exec sed -i 's|check-cast v0, Ljava/lang/String;|check-cast v0, Ljava/lang/String;\n\n    const-string v0, "2099-12-31T17:59:59Z"|g' {} +
           
-          # Step 3: Unlock Routine Video (n8.smali)
-          find decompiled_app -name "n8.smali" -exec sed -i 's/const-string v2, "ReadOnly"/const-string v2, "Full"/g' {} +
+          # Step 3: Unlock Routine Video
+          find decompiled_app -name "n8.smali" -exec sed -i 's|"ReadOnly"|"Full"|g' {} +
 
-      - name: Apply The Hacker Solution (Dynamic Global Search)
+      - name: Apply The Hacker Solution (Targeted Click Listeners)
         run: |
-          echo "Patching ALL Click Listeners globally (ReadOnly to Unlocked)..."
-          # এখন সে পুরো ডিকম্পাইল করা ফোল্ডারের সব স্মালি ফাইলে স্ক্যান করবে এবং রিপ্লেস করবে
-          find decompiled_app -type f -name "*.smali" -exec sed -i 's/"ReadOnly"/"Unlocked"/g' {} +
+          echo "Patching only specific 11 Click Listeners (ReadOnly to Unlocked)..."
+          # এখন সে গ্লোবালি স্ক্যান না করে শুধু আপনার দেওয়া নির্দিষ্ট ফাইলগুলোতেই এডিট করবে
+          FILES="cga.smali cia.smali d22.smali de.smali dia.smali fo5.smali gha.smali il9.smali kj7.smali gv4.smali h61.smali"
+          for file in $FILES; do
+            find decompiled_app -name "$file" -exec sed -i 's|"ReadOnly"|"Unlocked"|g' {} +
+          done
 
-      - name: Fix Live Class Paywall (Parser Surgery)
+      - name: Fix Live Class Paywall (Smart Parser Surgery)
         run: |
-          echo "Patching Live Class Access Level..."
-          find decompiled_app -name "zd6.smali" -exec sed -i '/check-cast v1, Ljava\/lang\/String;/a \    const-string v1, "Full"' {} +
-          find decompiled_app -name "er6.smali" -exec sed -i '/check-cast v4, Ljava\/lang\/String;/a \    const-string v4, "Full"' {} +
-          find decompiled_app -name "mx6.smali" -exec sed -i '/check-cast v[0-9]*, Ljava\/lang\/String;/a \    const-string v0, "Full"' {} + 
-          find decompiled_app -name "qse.smali" -exec sed -i '/check-cast v[0-9]*, Ljava\/lang\/String;/a \    const-string v0, "Full"' {} + 
+          echo "Patching Live Class Access Level dynamically..."
+          find decompiled_app -name "zd6.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
+          find decompiled_app -name "er6.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
+          find decompiled_app -name "mx6.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
+          find decompiled_app -name "qse.smali" -exec sed -i 's|check-cast \(v[0-9]*\), Ljava/lang/String;|check-cast \1, Ljava/lang/String;\n\n    const-string \1, "Full"|g' {} +
 
       - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
         run: |
@@ -109,7 +112,7 @@ jobs:
       - name: Change App Name to ShikhoMax
         run: |
           echo "Updating App Name to ShikhoMax..."
-          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">ShikhoMax<\/string>/g' {} +
+          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's|<string name="app_name"[^>]*>.*</string>|<string name="app_name">ShikhoMax</string>|g' {} +
 
       - name: Replace & Compress Onboarding Images
         run: |
