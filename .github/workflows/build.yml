@@ -24,38 +24,43 @@ jobs:
 
       - name: Install Download Tools (Via Cargo)
         run: |
-          # APKEditor & Signer ডাউনলোড
           curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           curl -fSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
           
-          # 100% Reliable Install: Cargo (Rust) দিয়ে apkeep ইনস্টল
-          echo "Installing apkeep... (এটি ২-৩ মিনিট সময় নিতে পারে, দয়া করে অপেক্ষা করুন)"
+          echo "Installing apkeep via Cargo..."
           cargo install apkeep
 
       - name: Download App from Play Store
         run: |
           echo "Downloading ${{ github.event.inputs.package_name }} from Google Play..."
           mkdir -p downloaded_apks
-          # apkeep লগিন ছাড়াই Aurora API ব্যবহার করে অ্যাপ নামাবে
           apkeep -a ${{ github.event.inputs.package_name }} downloaded_apks/
 
       - name: Process and Merge to Universal APK
         run: |
-          cd downloaded_apks
-          count=$(ls *.apk 2>/dev/null | wc -l)
+          echo "Checking downloaded files..."
           
-          if [ "$count" -gt "1" ]; then
-            echo "Split APKs detected ($count files). Packing to .apks..."
-            zip -q -r ../app.apks *
+          apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
+          xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
+          apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
+          
+          if [ -n "$apks_file" ]; then
+            echo "APKS bundle detected. Merging..."
+            java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
+          elif [ -n "$xapk_file" ]; then
+            echo "XAPK bundle detected. Merging..."
+            java -jar APKEditor.jar m -i "$xapk_file" -o universal.apk
+          elif [ "$apk_count" -gt "1" ]; then
+            echo "Multiple Split APKs detected ($apk_count). Zipping and merging..."
+            cd downloaded_apks
+            zip -q -r ../app.apks $(find . -name "*.apk")
             cd ..
-            echo "Merging APKS to Universal APK..."
             java -jar APKEditor.jar m -i app.apks -o universal.apk
-          elif [ "$count" -eq "1" ]; then
-            echo "Single APK detected. No merge required."
-            cd ..
-            cp downloaded_apks/*.apk universal.apk
+          elif [ "$apk_count" -eq "1" ]; then
+            echo "Single APK detected."
+            find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
           else
-            echo "Error: Failed to download APK. App might be region-locked or paid."
+            echo "Error: No APK files found."
             exit 1
           fi
 
