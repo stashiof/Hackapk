@@ -1,4 +1,4 @@
-name: Build ShikhoMax Stable
+name: Build ShikhoMax Stable (Fully Unlocked)
 
 on:
   workflow_dispatch:
@@ -46,25 +46,20 @@ jobs:
       - name: Process and Merge to Universal APK
         run: |
           echo "Checking downloaded files..."
-          
           apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
           xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
           apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
           
           if [ -n "$apks_file" ]; then
-            echo "APKS bundle detected. Merging..."
             java -jar APKEditor.jar m -i "$apks_file" -o merged.apk
           elif [ -n "$xapk_file" ]; then
-            echo "XAPK bundle detected. Merging..."
             java -jar APKEditor.jar m -i "$xapk_file" -o merged.apk
           elif [ "$apk_count" -gt "1" ]; then
-            echo "Multiple Split APKs detected ($apk_count). Zipping and merging..."
             cd downloaded_apks
             zip -q -r ../app.apks $(find . -name "*.apk")
             cd ..
             java -jar APKEditor.jar m -i app.apks -o merged.apk
           elif [ "$apk_count" -eq "1" ]; then
-            echo "Single APK detected."
             find downloaded_apks -name "*.apk" -exec cp {} merged.apk \;
           else
             echo "Error: No APK files found."
@@ -74,6 +69,36 @@ jobs:
       - name: Decompile APK
         run: |
           java -jar apktool.jar d merged.apk -o decompiled_app -f
+
+      - name: Apply Master Hack (Course Status & Badge Fix)
+        run: |
+          echo "Applying Master Hack..."
+          
+          # Step 1: Course Status Paid (m7c.smali & d8c.smali)
+          find decompiled_app -name "m7c.smali" -exec sed -i '/new-instance v3, Lh7c;/i \    sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v11, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v12, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v16, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n' {} +
+          find decompiled_app -name "d8c.smali" -exec sed -i '/new-instance v0, Lu7c;/i \    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v2, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v3, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    sget-object v5, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n' {} +
+          
+          # Step 2: Extend Free Trial Badge (b46, lu5, qt5)
+          find decompiled_app -name "b46.smali" -exec sed -i '/check-cast v7, Ljava\/lang\/String;/a \    const-string v7, "2099-12-31T17:59:59Z"' {} +
+          find decompiled_app -name "lu5.smali" -exec sed -i '/check-cast v7, Ljava\/lang\/String;/a \    const-string v7, "2099-12-31T17:59:59Z"' {} +
+          find decompiled_app -name "qt5.smali" -exec sed -i '/check-cast v0, Ljava\/lang\/String;/a \    const-string v0, "2099-12-31T17:59:59Z"' {} +
+          
+          # Step 3: Unlock Routine Video (n8.smali)
+          find decompiled_app -name "n8.smali" -exec sed -i 's/const-string v2, "ReadOnly"/const-string v2, "Full"/g' {} +
+
+      - name: Apply The Hacker Solution (Dynamic Global Search)
+        run: |
+          echo "Patching ALL Click Listeners globally (ReadOnly to Unlocked)..."
+          # এখন সে পুরো ডিকম্পাইল করা ফোল্ডারের সব স্মালি ফাইলে স্ক্যান করবে এবং রিপ্লেস করবে
+          find decompiled_app -type f -name "*.smali" -exec sed -i 's/"ReadOnly"/"Unlocked"/g' {} +
+
+      - name: Fix Live Class Paywall (Parser Surgery)
+        run: |
+          echo "Patching Live Class Access Level..."
+          find decompiled_app -name "zd6.smali" -exec sed -i '/check-cast v1, Ljava\/lang\/String;/a \    const-string v1, "Full"' {} +
+          find decompiled_app -name "er6.smali" -exec sed -i '/check-cast v4, Ljava\/lang\/String;/a \    const-string v4, "Full"' {} +
+          find decompiled_app -name "mx6.smali" -exec sed -i '/check-cast v[0-9]*, Ljava\/lang\/String;/a \    const-string v0, "Full"' {} + 
+          find decompiled_app -name "qse.smali" -exec sed -i '/check-cast v[0-9]*, Ljava\/lang\/String;/a \    const-string v0, "Full"' {} + 
 
       - name: Stable Bypass FLAG_SECURE (Enable Screenshots)
         run: |
@@ -98,11 +123,9 @@ jobs:
               if os.path.exists(img_name):
                   print(f"Compressing {img_name}...")
                   orig = Image.open(img_name).convert("RGBA")
-                  # ২৫৬ কালার প্যালেটে কনভার্ট করা হচ্ছে (এতে সাইজ অর্ধেকেরও বেশি কমে যাবে)
                   optimized_img = orig.convert("P", palette=Image.ADAPTIVE, colors=256)
                   
                   replaced = False
-                  # অ্যাপের যেখানেই এই নামের ছবি থাকুক, সেখানেই রিপ্লেস করবে
                   for root, dirs, files in os.walk("decompiled_app/res"):
                       if img_name in files:
                           target_path = os.path.join(root, img_name)
@@ -110,7 +133,6 @@ jobs:
                           print(f"Replaced and compressed at: {target_path}")
                           replaced = True
                   
-                  # যদি আগে থেকে না থাকে, তাহলে সরাসরি drawable ফোল্ডারে সেভ করবে
                   if not replaced:
                       fallback_path = os.path.join("decompiled_app/res/drawable", img_name)
                       os.makedirs(os.path.dirname(fallback_path), exist_ok=True)
