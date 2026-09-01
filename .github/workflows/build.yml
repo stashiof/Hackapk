@@ -1,4 +1,4 @@
-name: PlayStore to Universal APK
+name: PlayStore to Universal & Deep Clone APK
 
 on:
   workflow_dispatch:
@@ -22,51 +22,88 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Download Tools (Via Cargo)
+      - name: Cache Tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/apkeep
+            *.jar
+          key: tools-cache-${{ runner.os }}
+
+      - name: Install Dependencies & Tools
         run: |
-          curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          curl -fSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          sudo apt-get update
+          sudo apt-get install -y zip unzip apktool
           
-          echo "Installing apkeep via Cargo..."
-          cargo install apkeep
+          if [ ! -f "APKEditor.jar" ]; then
+            curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
+          fi
+          if [ ! -f "uber-apk-signer.jar" ]; then
+            curl -fSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          fi
+          
+          if ! command -v apkeep &> /dev/null; then
+            cargo install apkeep
+          fi
+
       - name: Download App from Play Store
         run: |
-          echo "Downloading ${{ github.event.inputs.package_name }} from Google Play..."
           mkdir -p downloaded_apks
           apkeep -a ${{ github.event.inputs.package_name }} downloaded_apks/
+
       - name: Process and Merge to Universal APK
         run: |
-          echo "Checking downloaded files..."
-          
-          apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
-          xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
-          apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
+          apks_file=$(find downloaded_apks -maxdepth 1 -type f -name "*.apks" | head -n 1)
+          xapk_file=$(find downloaded_apks -maxdepth 1 -type f -name "*.xapk" | head -n 1)
+          apk_count=$(find downloaded_apks -maxdepth 1 -type f -name "*.apk" | wc -l)
           
           if [ -n "$apks_file" ]; then
-            echo "APKS bundle detected. Merging..."
             java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
           elif [ -n "$xapk_file" ]; then
-            echo "XAPK bundle detected. Merging..."
             java -jar APKEditor.jar m -i "$xapk_file" -o universal.apk
           elif [ "$apk_count" -gt "1" ]; then
-            echo "Multiple Split APKs detected ($apk_count). Zipping and merging..."
             cd downloaded_apks
-            zip -q -r ../app.apks $(find . -name "*.apk")
+            zip -q -r ../app.apks $(find . -maxdepth 1 -name "*.apk")
             cd ..
             java -jar APKEditor.jar m -i app.apks -o universal.apk
           elif [ "$apk_count" -eq "1" ]; then
-            echo "Single APK detected."
-            find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
+            find downloaded_apks -maxdepth 1 -name "*.apk" -exec cp {} universal.apk \;
           else
             echo "Error: No APK files found."
             exit 1
           fi
-      - name: Sign Universal APK
+
+      - name: Create Deep Clone APK (Smali Patching)
         run: |
-          echo "Signing the APK..."
+          apktool d universal.apk -o decoded_apk
+          
+          ORIG_PKG="${{ github.event.inputs.package_name }}"
+          CLONE_PKG="${ORIG_PKG}.clone"
+          
+          # Convert format com.example.app to com/example/app
+          ORIG_PATH="${ORIG_PKG//./\/}"
+          CLONE_PATH="${CLONE_PKG//./\/}"
+          
+          # 1. Modify AndroidManifest.xml
+          sed -i "s/package=\"$ORIG_PKG\"/package=\"$CLONE_PKG\"/g" decoded_apk/AndroidManifest.xml
+          sed -i 's/android:authorities="\([^"]*\)"/android:authorities="\1.clone"/g' decoded_apk/AndroidManifest.xml
+          
+          # 2. Deep Smali Patching (Replacing code references)
+          echo "Patching smali files for deep cloning..."
+          find decoded_apk -type f -name "*.smali" -exec sed -i "s|L$ORIG_PATH|L$CLONE_PATH|g" {} +
+          find decoded_apk -type f -name "*.smali" -exec sed -i "s|\"$ORIG_PKG\"|\"$CLONE_PKG\"|g" {} +
+          
+          echo "Rebuilding Clone APK..."
+          apktool b decoded_apk -o clone.apk
+
+      - name: Sign Both APKs
+        run: |
+          mkdir -p output_signed
           java -jar uber-apk-signer.jar -a universal.apk -o output_signed/
-      - name: Upload Artifact
+          java -jar uber-apk-signer.jar -a clone.apk -o output_signed/
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Universal-APK-${{ github.event.inputs.package_name }}
-          path: output_signed/*.apk
+          name: Apps-${{ github.event.inputs.package_name }}
+          path: output_signed/*.apk 
