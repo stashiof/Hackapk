@@ -1,109 +1,102 @@
-name: PlayStore to Universal & Deep Clone APK
+name: Pro-Level Universal & Clone APK Builder
 
 on:
   workflow_dispatch:
     inputs:
       package_name:
-        description: 'App Package Name'
+        description: 'App Package Name (e.g., com.facebook.lite)'
         required: true
         default: 'tech.shikho.android'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_BUILD_TOOLS: '34.0.0' # Using the latest Android SDK Build Tools
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Cache Tools
+      - name: Cache Tools & SDK
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/apkeep
-            *.jar
-          key: tools-cache-${{ runner.os }}
+            /usr/local/lib/android/sdk/build-tools/
+          key: build-tools-cache-${{ runner.os }}
 
-      - name: Install Dependencies & Tools
+      - name: Install System Dependencies & apkeep
         run: |
-          sudo apt-get update
-          sudo apt-get install -y zip unzip apktool
-          
-          if [ ! -f "APKEditor.jar" ]; then
-            curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
-          fi
-          if [ ! -f "uber-apk-signer.jar" ]; then
-            curl -fSL -o uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
-          fi
-          
+          sudo apt-get update && sudo apt-get install -y zip unzip apktool
           if ! command -v apkeep &> /dev/null; then
             cargo install apkeep
           fi
+          # Ensure Android Build Tools are accessible
+          echo "export PATH=\$PATH:$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS" >> $GITHUB_ENV
 
       - name: Download App from Play Store
         run: |
-          mkdir -p downloaded_apks
-          apkeep -a ${{ github.event.inputs.package_name }} downloaded_apks/
+          mkdir -p raw_apks
+          apkeep -a ${{ github.event.inputs.package_name }} raw_apks/
 
-      - name: Process and Merge to Universal APK
+      - name: Process App Bundles to Universal APK
         run: |
-          apks_file=$(find downloaded_apks -maxdepth 1 -type f -name "*.apks" | head -n 1)
-          xapk_file=$(find downloaded_apks -maxdepth 1 -type f -name "*.xapk" | head -n 1)
-          apk_count=$(find downloaded_apks -maxdepth 1 -type f -name "*.apk" | wc -l)
+          # Download APKEditor only for merging split APKs
+          curl -fSL -o APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           
-          if [ -n "$apks_file" ]; then
-            java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
-          elif [ -n "$xapk_file" ]; then
-            java -jar APKEditor.jar m -i "$xapk_file" -o universal.apk
-          elif [ "$apk_count" -gt "1" ]; then
-            cd downloaded_apks
-            zip -q -r ../app.apks $(find . -maxdepth 1 -name "*.apk")
-            cd ..
-            java -jar APKEditor.jar m -i app.apks -o universal.apk
-          elif [ "$apk_count" -eq "1" ]; then
-            find downloaded_apks -maxdepth 1 -name "*.apk" -exec cp {} universal.apk \;
+          if ls raw_apks/*.apks 1> /dev/null 2>&1 || ls raw_apks/*.xapk 1> /dev/null 2>&1; then
+            BUNDLE=$(ls raw_apks/*.apks raw_apks/*.xapk 2>/dev/null | head -n 1)
+            java -jar APKEditor.jar m -i "$BUNDLE" -o base_universal.apk
+          elif [ $(ls raw_apks/*.apk | wc -l) -gt 1 ]; then
+            cd raw_apks && zip -q -r ../app.apks *.apk && cd ..
+            java -jar APKEditor.jar m -i app.apks -o base_universal.apk
           else
-            echo "Error: No APK files found."
-            exit 1
+            cp raw_apks/*.apk base_universal.apk
           fi
 
-      - name: Create Deep Clone APK (Smali Patching)
+      - name: Advanced Decompile & Smali Patching
         run: |
-          apktool d universal.apk -o decoded_apk
+          apktool d base_universal.apk -o decoded_apk -f
           
           ORIG_PKG="${{ github.event.inputs.package_name }}"
-          CLONE_PKG="${ORIG_PKG}.clone"
-          
-          # Convert format com.example.app to com/example/app
+          CLONE_PKG="${ORIG_PKG}.proclone"
           ORIG_PATH="${ORIG_PKG//./\/}"
           CLONE_PATH="${CLONE_PKG//./\/}"
           
-          # 1. Modify AndroidManifest.xml
+          echo "Patching AndroidManifest.xml..."
           sed -i "s/package=\"$ORIG_PKG\"/package=\"$CLONE_PKG\"/g" decoded_apk/AndroidManifest.xml
-          sed -i 's/android:authorities="\([^"]*\)"/android:authorities="\1.clone"/g' decoded_apk/AndroidManifest.xml
+          sed -i -r 's/android:authorities="([^"]*)"/android:authorities="\1.proclone"/g' decoded_apk/AndroidManifest.xml
+          sed -i -r 's/android:name="([^"]*\.provider\.[^"]*)"/android:name="\1_proclone"/g' decoded_apk/AndroidManifest.xml
           
-          # 2. Deep Smali Patching (Replacing code references)
-          echo "Patching smali files for deep cloning..."
-          find decoded_apk -type f -name "*.smali" -exec sed -i "s|L$ORIG_PATH|L$CLONE_PATH|g" {} +
-          find decoded_apk -type f -name "*.smali" -exec sed -i "s|\"$ORIG_PKG\"|\"$CLONE_PKG\"|g" {} +
-          
-          echo "Rebuilding Clone APK..."
-          apktool b decoded_apk -o clone.apk
+          echo "Executing Deep Smali Text Replacement (Multithreaded)..."
+          find decoded_apk -type f -name "*.smali" | xargs -n 50 -P $(nproc) sed -i "s|L$ORIG_PATH|L$CLONE_PATH|g"
+          find decoded_apk -type f -name "*.smali" | xargs -n 50 -P $(nproc) sed -i "s|\"$ORIG_PKG\"|\"$CLONE_PKG\"|g"
 
-      - name: Sign Both APKs
+      - name: Rebuild Clone APK with AAPT2
         run: |
-          mkdir -p output_signed
-          java -jar uber-apk-signer.jar -a universal.apk -o output_signed/
-          java -jar uber-apk-signer.jar -a clone.apk -o output_signed/
+          apktool b decoded_apk -o unaligned_clone.apk --use-aapt2
 
-      - name: Upload Artifacts
+      - name: Generate Custom Keystore
+        run: |
+          keytool -genkey -v -keystore release.keystore -alias myalias -keyalg RSA -keysize 2048 -validity 10000 -storepass "android123" -keypass "android123" -dname "CN=Pro Dev, OU=Modding, O=GitHub, L=Dhaka, S=Dhaka, C=BD"
+
+      - name: Zipalign (Memory Optimization)
+        run: |
+          $ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign -p -f 4 unaligned_clone.apk aligned_clone.apk
+
+      - name: Sign APK (apksigner)
+        run: |
+          $ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner sign --ks release.keystore --ks-pass pass:android123 --key-pass pass:android123 --out Final_Pro_Clone.apk aligned_clone.apk
+
+      - name: Upload Pro Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Apps-${{ github.event.inputs.package_name }}
-          path: output_signed/*.apk 
+          name: Pro-Clone-${{ github.event.inputs.package_name }}
+          path: Final_Pro_Clone.apk
