@@ -1,0 +1,179 @@
+name: Ultimate App Modder 🚀
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_type:
+        description: 'অ্যাপ কোথা থেকে ডাউনলোড করবেন?'
+        required: true
+        type: choice
+        options:
+          - 'PlayStore'
+          - 'GoogleDrive'
+        default: 'PlayStore'
+      app_identifier:
+        description: 'Play Store Package Name অথবা Google Drive Link'
+        required: true
+        type: string
+        default: 'tech.shikho.android'
+      change_name:
+        description: 'অ্যাপের নাম পরিবর্তন করবেন?'
+        required: true
+        type: boolean
+        default: false
+      new_app_name:
+        description: 'নতুন অ্যাপের নাম (যদি নাম পরিবর্তন করতে চান)'
+        required: false
+        type: string
+        default: 'Modded App'
+      change_icon:
+        description: 'অ্যাপের লোগো পরিবর্তন করবেন?'
+        required: true
+        type: boolean
+        default: false
+      icon_url:
+        description: 'নতুন লোগোর ডিরেক্ট লিংক (PNG ফরম্যাট)'
+        required: false
+        type: string
+      bypass_secure:
+        description: 'স্ক্রিনশট/রেকর্ড রেস্ট্রিকশন ভাঙতে চান? (FLAG_SECURE)'
+        required: true
+        type: boolean
+        default: true
+      clone_app:
+        description: 'ক্লোন অ্যাপ তৈরি করবেন? (আগেরটার পাশাপাশি চালাতে)'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  build_mod:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java & Python
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Tools (apkeep, apktool, etc.)
+        run: |
+          sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
+          pip install gdown pillow
+          cargo install apkeep
+          
+          # Download APK modding tools
+          wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
+          wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
+          wget -q -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Download & Merge to Universal APK
+        run: |
+          if [ "${{ github.event.inputs.source_type }}" == "PlayStore" ]; then
+            echo "Downloading from Play Store..."
+            mkdir -p downloaded_apks
+            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
+            
+            # Merge logic for PlayStore
+            cd downloaded_apks
+            apk_count=$(find . -name "*.apk" | wc -l)
+            if [ "$apk_count" -gt "1" ]; then
+              zip -q -r ../app.apks $(find . -name "*.apk")
+              cd ..
+              java -jar APKEditor.jar m -i app.apks -o universal.apk
+            else
+              find . -name "*.apk" -exec cp {} ../universal.apk \;
+              cd ..
+            fi
+          else
+            echo "Downloading from Google Drive..."
+            gdown "${{ github.event.inputs.app_identifier }}" -O downloaded.apks
+            java -jar APKEditor.jar m -i downloaded.apks -o universal.apk
+          fi
+
+      - name: Decompile APK
+        run: |
+          echo "Decompiling APK..."
+          java -jar apktool.jar d universal.apk -o decompiled_app -f
+
+      - name: Patch FLAG_SECURE (Screenshot/Record Enable)
+        if: ${{ github.event.inputs.bypass_secure == 'true' }}
+        run: |
+          echo "Bypassing FLAG_SECURE..."
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
+
+      - name: Change App Name
+        if: ${{ github.event.inputs.change_name == 'true' }}
+        run: |
+          echo "Changing App Name to ${{ github.event.inputs.new_app_name }}..."
+          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ github.event.inputs.new_app_name }}<\/string>/g' {} +
+
+      - name: Clone App (Allow multiple installs)
+        if: ${{ github.event.inputs.clone_app == 'true' }}
+        run: |
+          echo "Cloning App..."
+          MANIFEST="decompiled_app/AndroidManifest.xml"
+          # Get original package name
+          ORIGINAL_PKG=$(grep -oP 'package="\K[^"]+' "$MANIFEST" | head -n 1)
+          NEW_PKG="${ORIGINAL_PKG}.clone"
+          # Replace package name
+          sed -i "s/package=\"$ORIGINAL_PKG\"/package=\"$NEW_PKG\"/g" "$MANIFEST"
+          # Fix authorities to prevent installation conflict
+          sed -i "s/android:authorities=\"/android:authorities=\"clone./g" "$MANIFEST"
+          echo "Package changed from $ORIGINAL_PKG to $NEW_PKG"
+
+      - name: Change App Icon
+        if: ${{ github.event.inputs.change_icon == 'true' }}
+        run: |
+          echo "Downloading and applying new Icon..."
+          wget -q -O app_icon.png "${{ github.event.inputs.icon_url }}"
+          
+          python3 - << 'EOF'
+          import os
+          from PIL import Image
+          
+          icon_src = "app_icon.png"
+          if not os.path.exists(icon_src):
+              exit(0)
+              
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              if "anydpi" in root:
+                  for f in files:
+                      if "ic_launcher" in f and f.endswith(".xml"):
+                          os.remove(os.path.join(root, f))
+                          
+          orig = Image.open(icon_src).convert("RGBA")
+          sizes = {
+              "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
+              "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
+              "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
+          }
+          
+          for folder, size in sizes.items():
+              dir_path = os.path.join("decompiled_app/res", folder)
+              if os.path.exists(dir_path):
+                  resized = orig.resize(size, Image.Resampling.LANCZOS)
+                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                      resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
+          EOF
+
+      - name: Rebuild Optimized APK
+        run: |
+          echo "Rebuilding APK..."
+          java -jar apktool.jar b decompiled_app -o modded_unsigned.apk --use-aapt2
+
+      - name: Sign Modded APK
+        run: |
+          echo "Signing APK..."
+          java -jar uber-apk-signer.jar -a modded_unsigned.apk -o output_signed/
+
+      - name: Upload Final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ultimate-Modded-APK
+          path: output_signed/*.apk
