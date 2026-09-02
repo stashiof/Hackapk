@@ -78,16 +78,29 @@ jobs:
             mkdir -p downloaded_apks
             apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
             
-            # Merge logic for PlayStore
-            cd downloaded_apks
-            apk_count=$(find . -name "*.apk" | wc -l)
-            if [ "$apk_count" -gt "1" ]; then
+            echo "Checking downloaded files..."
+            apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
+            xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
+            apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
+            
+            if [ -n "$apks_file" ]; then
+              echo "APKS bundle detected. Merging..."
+              java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
+            elif [ -n "$xapk_file" ]; then
+              echo "XAPK bundle detected. Merging..."
+              java -jar APKEditor.jar m -i "$xapk_file" -o universal.apk
+            elif [ "$apk_count" -gt "1" ]; then
+              echo "Multiple Split APKs detected ($apk_count). Zipping and merging..."
+              cd downloaded_apks
               zip -q -r ../app.apks $(find . -name "*.apk")
               cd ..
               java -jar APKEditor.jar m -i app.apks -o universal.apk
+            elif [ "$apk_count" -eq "1" ]; then
+              echo "Single APK detected."
+              find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              find . -name "*.apk" -exec cp {} ../universal.apk \;
-              cd ..
+              echo "Error: No APK files found in downloaded_apks."
+              exit 1
             fi
           else
             echo "Downloading from Google Drive..."
@@ -118,14 +131,15 @@ jobs:
         run: |
           echo "Cloning App..."
           MANIFEST="decompiled_app/AndroidManifest.xml"
-          # Get original package name
           ORIGINAL_PKG=$(grep -oP 'package="\K[^"]+' "$MANIFEST" | head -n 1)
-          NEW_PKG="${ORIGINAL_PKG}.clone"
-          # Replace package name
-          sed -i "s/package=\"$ORIGINAL_PKG\"/package=\"$NEW_PKG\"/g" "$MANIFEST"
-          # Fix authorities to prevent installation conflict
-          sed -i "s/android:authorities=\"/android:authorities=\"clone./g" "$MANIFEST"
-          echo "Package changed from $ORIGINAL_PKG to $NEW_PKG"
+          if [ -n "$ORIGINAL_PKG" ]; then
+            NEW_PKG="${ORIGINAL_PKG}.clone"
+            sed -i "s/package=\"$ORIGINAL_PKG\"/package=\"$NEW_PKG\"/g" "$MANIFEST"
+            sed -i "s/android:authorities=\"/android:authorities=\"clone./g" "$MANIFEST"
+            echo "Package changed from $ORIGINAL_PKG to $NEW_PKG"
+          else
+            echo "Warning: Could not find original package name!"
+          fi
 
       - name: Change App Icon
         if: ${{ github.event.inputs.change_icon == 'true' }}
@@ -139,6 +153,7 @@ jobs:
           
           icon_src = "app_icon.png"
           if not os.path.exists(icon_src):
+              print("Icon download failed or invalid URL.")
               exit(0)
               
           for root, dirs, files in os.walk("decompiled_app/res"):
@@ -147,19 +162,23 @@ jobs:
                       if "ic_launcher" in f and f.endswith(".xml"):
                           os.remove(os.path.join(root, f))
                           
-          orig = Image.open(icon_src).convert("RGBA")
-          sizes = {
-              "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
-              "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
-              "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
-          }
-          
-          for folder, size in sizes.items():
-              dir_path = os.path.join("decompiled_app/res", folder)
-              if os.path.exists(dir_path):
-                  resized = orig.resize(size, Image.Resampling.LANCZOS)
-                  for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
-                      resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
+          try:
+              orig = Image.open(icon_src).convert("RGBA")
+              sizes = {
+                  "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
+                  "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
+                  "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
+              }
+              
+              for folder, size in sizes.items():
+                  dir_path = os.path.join("decompiled_app/res", folder)
+                  if os.path.exists(dir_path):
+                      resized = orig.resize(size, Image.Resampling.LANCZOS)
+                      for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                          resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
+              print("Icon replaced successfully!")
+          except Exception as e:
+              print(f"Error processing image: {e}")
           EOF
 
       - name: Rebuild Optimized APK
