@@ -98,6 +98,7 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
+              echo "Error: No APK files found."
               exit 1
             fi
           else
@@ -111,24 +112,26 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Shikho Mod)
+      - name: Premium Features Unlock (Global Deep Patch)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Global iget Patches for 100% Unlock..."
+          echo "Applying Deep Smali patches for 100% Unlock..."
           python3 - << 'EOF'
           import os
           import re
 
-          # Advanced Global Patches to bypass Gson/Moshi Object creation
-          # This replaces ALL field reads (iget) across the entire app
+          # 1. Global Patches: Replaces field reading (iget) everywhere in the app
+          # This guarantees that even if Moshi creates the object silently, the UI gets our Fake TRUE/FALSE.
           global_patches = [
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->l:Z', r'const/4 \1, 0x0'),
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->m:Z', r'const/4 \1, 0x0'),
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->t:Z', r'const/4 \1, 0x1'),
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->u:Z', r'const/4 \1, 0x0'),
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->v:Z', r'const/4 \1, 0x0'),
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->w:Z', r'const/4 \1, 0x1'),
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->G:Z', r'const/4 \1, 0x0'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->l:Z', r'const/4 \1, 0x0'), # isExpired = false
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->m:Z', r'const/4 \1, 0x0'), # isFree = false (Treat as Premium Paid)
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->t:Z', r'const/4 \1, 0x1'), # isActive = true
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->u:Z', r'const/4 \1, 0x0'), # trialEnabled = false (Removes 'trial ended' lock)
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->v:Z', r'const/4 \1, 0x0'), # showTrial = false
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->w:Z', r'const/4 \1, 0x1'), # isEnrolled = true (Unlocks completely)
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->G:Z', r'const/4 \1, 0x0'), # isComplementary = false
+              
+              # Phase and Data Enrolment (Removes Quarter & Main Course Locks)
               (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
               (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
               (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
@@ -136,6 +139,7 @@ jobs:
               (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
           ]
 
+          # 2. File Specific Initialization Patches
           file_specific_patches = {
               "slh.smali": [
                   (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z', r'const/4 \1, 0x0')
@@ -154,12 +158,21 @@ jobs:
               ]
           }
 
-          h30_replacement = """.method public final d()Ljava/lang/String;
+          # 3. Local Prefs Bypass & Unlimited Video Download
+          h30_d_replacement = """.method public final d()Ljava/lang/String;
               .registers 2
 
               const-string v0, "full"
 
               return-object v0
+          .end method"""
+
+          h30_y_replacement = """.method public final y()I
+              .registers 2
+
+              const v0, 999999
+
+              return v0
           .end method"""
 
           for root, dirs, files in os.walk("decompiled_app"):
@@ -171,18 +184,16 @@ jobs:
                       
                       original_content = content
                       
-                      # 1. Apply Global iget overrides
                       for pattern, replacement in global_patches:
                           content = re.sub(pattern, replacement, content)
                       
-                      # 2. Apply File Specific Patches
                       if file in file_specific_patches:
                           for pattern, replacement in file_specific_patches[file]:
                               content = re.sub(pattern, replacement, content)
                       
-                      # 3. Handle Local Prefs
                       if file == "h30.smali":
-                          content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_replacement, content)
+                          content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_d_replacement, content)
+                          content = re.sub(r'\.method public final y\(\)I[\s\S]*?\.end method', h30_y_replacement, content)
 
                       if content != original_content:
                           with open(filepath, "w") as f:
