@@ -112,25 +112,61 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Shikho Ultimate Mod)
+      - name: Premium Features Unlock (Shikho Master Patch)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Flawless Smali patches for Premium Unlock & Unlimited Downloads..."
+          echo "Applying Master Patches for 100% Unlock..."
           python3 - << 'EOF'
           import os
           import re
 
-          # 1. Global Patches (Only fixing expiration and trial banners so unjoined courses still load perfectly)
+          # 1. Global Field Reading (iget) Patches across all classes
           global_patches = [
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->l:Z', r'const/4 \1, 0x0'), # isExpired = false (Never expires)
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->v:Z', r'const/4 \1, 0x0')  # showTrial = false (Hides "Trial Ended" banners)
+              # n4: Course Level
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->l:Z', r'const/4 \1, 0x0'), # isExpired = false
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->m:Z', r'const/4 \1, 0x0'), # isFree = false
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->t:Z', r'const/4 \1, 0x1'), # isActive = true
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->u:Z', r'const/4 \1, 0x0'), # trialEnabled = false
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->v:Z', r'const/4 \1, 0x0'), # showTrial = false
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->w:Z', r'const/4 \1, 0x1'), # isEnrolled = true
+              (r'iget-boolean (v\d+|p\d+), [^,]+, Ln4;->G:Z', r'const/4 \1, 0x0'), # isComplementary = false
+              
+              # u7c: Phase/Quarter Level (Removes 'Quarter Enrolment' Locks)
+              (r'iget-object (v\d+|p\d+), [^,]+, Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), [^,]+, Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
+              
+              # h7c: Data/Batch Level (Kills '3-day trial expired' banner)
+              (r'iget-object (v\d+|p\d+), [^,]+, Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), [^,]+, Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), [^,]+, Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
           ]
 
-          # 2. File Specific Initialization Patches
+          # 2. File-Specific Safe Initializations & Navigation Overrides
           file_specific_patches = {
+              "n4.smali": [
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->u:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->u:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->G:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->G:Z')
+              ],
+              "u7c.smali": [
+                  (r'iput-object (p\d+), (p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;'),
+                  (r'iput-object (p\d+), (p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;')
+              ],
+              "h7c.smali": [
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;'),
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;'),
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->m:Ljava/lang/Boolean;')
+              ],
               "slh.smali": [
-                  # 0x1 (TRUE) completely skips the Paywall jump condition and forces entry to Videos/Exams!
-                  (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z', r'const/4 \1, 0x1')
+                  # Live Class / Video Lock Bypass (0x0 allows if-eqz branch to fire)
+                  (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z', r'const/4 \1, 0x0'),
+                  # Chapter Exam / Live Exam Paywall Jump Neutralization
+                  (r'if-eqz (v\d+), :cond_2ac', r'# bypassed paywall jump'),
+                  (r'if-eqz (v\d+), :cond_2af', r'# bypassed paywall jump')
               ],
               "er6.smali": [
                   (r'new-instance (v\d+), Ltq6;', r'const-string v4, "full"\n\n    new-instance \1, Ltq6;')
@@ -146,7 +182,7 @@ jobs:
               ]
           }
 
-          # 3. Local Prefs Bypass & Unlimited Video Download Hack (999,999 limits)
+          # 3. SharedPreferences: Unlimited Download Limit + Full Access Level
           h30_d_replacement = """.method public final d()Ljava/lang/String;
               .registers 2
 
@@ -158,7 +194,7 @@ jobs:
           h30_y_replacement = """.method public final y()I
               .registers 2
 
-              const v0, 0xf423f
+              const v0, 0x7fffffff
 
               return v0
           .end method"""
@@ -172,7 +208,7 @@ jobs:
                       
                       original_content = content
                       
-                      # Apply Global overrides
+                      # Apply Global Field Reads Override
                       for pattern, replacement in global_patches:
                           content = re.sub(pattern, replacement, content)
                       
@@ -181,7 +217,7 @@ jobs:
                           for pattern, replacement in file_specific_patches[file]:
                               content = re.sub(pattern, replacement, content)
                       
-                      # Handle Local Prefs & Unlimited Downloads
+                      # Apply SharedPreferences Hacks
                       if file == "h30.smali":
                           content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_d_replacement, content)
                           content = re.sub(r'\.method public final y\(\)I[\s\S]*?\.end method', h30_y_replacement, content)
@@ -189,7 +225,7 @@ jobs:
                       if content != original_content:
                           with open(filepath, "w") as f:
                               f.write(content)
-                          print(f"✅ Auto-Patched: {filepath}")
+                          print(f"✅ Patched: {filepath}")
           EOF
 
       - name: Patch FLAG_SECURE (Screenshot/Record Enable)
