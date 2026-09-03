@@ -114,59 +114,43 @@ jobs:
       - name: Premium Features Unlock (Shikho Mod)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Flawless Smali patches for Premium Unlock..."
+          echo "Applying Global iget Patches for 100% Unlock..."
           python3 - << 'EOF'
           import os
           import re
 
-          # Advanced and Safe RegEx Patterns mapping perfectly to the UI flaws observed
-          regex_patches = {
-              "n4.smali": [
-                  # isExpired = false
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z'),
-                  # isFree = false (We are treating it as a PAID premium course, not a free preview)
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z'),
-                  # isActive = true
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z'),
-                  # trialEnabled = false (Removes the 'Free trial ended' lock)
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->u:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->u:Z'),
-                  # showTrial = false
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z'),
-                  # isEnrolled = true (Forces enrollment)
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z'),
-                  # isComplementary = false
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->G:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->G:Z')
-              ],
+          # Advanced Global Patches to bypass Gson/Moshi Object creation
+          # This replaces ALL field reads (iget) across the entire app
+          global_patches = [
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->l:Z', r'const/4 \1, 0x0'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->m:Z', r'const/4 \1, 0x0'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->t:Z', r'const/4 \1, 0x1'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->u:Z', r'const/4 \1, 0x0'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->v:Z', r'const/4 \1, 0x0'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->w:Z', r'const/4 \1, 0x1'),
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->G:Z', r'const/4 \1, 0x0'),
+              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
+              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
+          ]
+
+          file_specific_patches = {
               "slh.smali": [
-                  # Safe override for Video/Live Class lock status
                   (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z', r'const/4 \1, 0x0')
               ],
               "er6.smali": [
-                  # Routine access_level override
                   (r'new-instance (v\d+), Ltq6;', r'const-string v4, "full"\n\n    new-instance \1, Ltq6;')
               ],
               "zd6.smali": [
-                  # Live Class access_level override
                   (r'new-instance (v\d+), Lsd6;', r'const-string v1, "full"\n\n    new-instance \1, Lsd6;')
               ],
               "b46.smali": [
-                  # Batch active override
                   (r'new-instance (v\d+), Lt36;', r'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n\n    new-instance \1, Lt36;')
               ],
               "lu5.smali": [
-                  # Consumables active override
                   (r'new-instance (v\d+), Lzt5;', r'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n\n    new-instance \1, Lzt5;')
-              ],
-              "u7c.smali": [
-                  # Phase unlocking (Removes locks from 'Quarter 1', 'Quarter 2' etc.)
-                  (r'iput-object (p\d+), (p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;'), # has_enrolment = true
-                  (r'iput-object (p\d+), (p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;') # is_purchasable = false (Removes the buy button)
-              ],
-              "h7c.smali": [
-                  # Deep Data enrolment unlock (Course level)
-                  (r'iput-object (p\d+), (p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;'), # has_enrolment = true
-                  (r'iput-object (p\d+), (p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;'), # has_free_trial_enrolment = false
-                  (r'iput-object (p\d+), (p\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->m:Ljava/lang/Boolean;')  # is_purchasable = false
               ]
           }
 
@@ -180,31 +164,30 @@ jobs:
 
           for root, dirs, files in os.walk("decompiled_app"):
               for file in files:
-                  filepath = os.path.join(root, file)
-                  
-                  if file in regex_patches:
+                  if file.endswith(".smali"):
+                      filepath = os.path.join(root, file)
                       with open(filepath, "r") as f:
                           content = f.read()
                       
                       original_content = content
-                      for pattern, replacement in regex_patches[file]:
+                      
+                      # 1. Apply Global iget overrides
+                      for pattern, replacement in global_patches:
                           content = re.sub(pattern, replacement, content)
                       
+                      # 2. Apply File Specific Patches
+                      if file in file_specific_patches:
+                          for pattern, replacement in file_specific_patches[file]:
+                              content = re.sub(pattern, replacement, content)
+                      
+                      # 3. Handle Local Prefs
+                      if file == "h30.smali":
+                          content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_replacement, content)
+
                       if content != original_content:
                           with open(filepath, "w") as f:
                               f.write(content)
-                          print(f"✅ Successfully Patched: {filepath}")
-                  
-                  if file == "h30.smali":
-                      with open(filepath, "r") as f:
-                          content = f.read()
-                      
-                      new_content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_replacement, content)
-                      
-                      if new_content != content:
-                          with open(filepath, "w") as f:
-                              f.write(new_content)
-                          print(f"✅ Local Prefs Patched: {filepath}")
+                          print(f"✅ Auto-Patched: {filepath}")
           EOF
 
       - name: Patch FLAG_SECURE (Screenshot/Record Enable)
