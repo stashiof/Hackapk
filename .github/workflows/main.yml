@@ -112,37 +112,25 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Global Deep Patch)
+      - name: Premium Features Unlock (Shikho Ultimate Mod)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Deep Smali patches for 100% Unlock..."
+          echo "Applying Flawless Smali patches for Premium Unlock & Unlimited Downloads..."
           python3 - << 'EOF'
           import os
           import re
 
-          # 1. Global Patches: Replaces field reading (iget) everywhere in the app
-          # This guarantees that even if Moshi creates the object silently, the UI gets our Fake TRUE/FALSE.
+          # 1. Global Patches (Only fixing expiration and trial banners so unjoined courses still load perfectly)
           global_patches = [
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->l:Z', r'const/4 \1, 0x0'), # isExpired = false
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->m:Z', r'const/4 \1, 0x0'), # isFree = false (Treat as Premium Paid)
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->t:Z', r'const/4 \1, 0x1'), # isActive = true
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->u:Z', r'const/4 \1, 0x0'), # trialEnabled = false (Removes 'trial ended' lock)
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->v:Z', r'const/4 \1, 0x0'), # showTrial = false
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->w:Z', r'const/4 \1, 0x1'), # isEnrolled = true (Unlocks completely)
-              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->G:Z', r'const/4 \1, 0x0'), # isComplementary = false
-              
-              # Phase and Data Enrolment (Removes Quarter & Main Course Locks)
-              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
-              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
-              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
-              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
-              (r'iget-object (v\d+|p\d+), (v\d+|p\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->l:Z', r'const/4 \1, 0x0'), # isExpired = false (Never expires)
+              (r'iget-boolean (v\d+|p\d+), (v\d+|p\d+), Ln4;->v:Z', r'const/4 \1, 0x0')  # showTrial = false (Hides "Trial Ended" banners)
           ]
 
           # 2. File Specific Initialization Patches
           file_specific_patches = {
               "slh.smali": [
-                  (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z', r'const/4 \1, 0x0')
+                  # 0x1 (TRUE) completely skips the Paywall jump condition and forces entry to Videos/Exams!
+                  (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z', r'const/4 \1, 0x1')
               ],
               "er6.smali": [
                   (r'new-instance (v\d+), Ltq6;', r'const-string v4, "full"\n\n    new-instance \1, Ltq6;')
@@ -158,7 +146,7 @@ jobs:
               ]
           }
 
-          # 3. Local Prefs Bypass & Unlimited Video Download
+          # 3. Local Prefs Bypass & Unlimited Video Download Hack (999,999 limits)
           h30_d_replacement = """.method public final d()Ljava/lang/String;
               .registers 2
 
@@ -170,7 +158,7 @@ jobs:
           h30_y_replacement = """.method public final y()I
               .registers 2
 
-              const v0, 999999
+              const v0, 0xf423f
 
               return v0
           .end method"""
@@ -184,13 +172,16 @@ jobs:
                       
                       original_content = content
                       
+                      # Apply Global overrides
                       for pattern, replacement in global_patches:
                           content = re.sub(pattern, replacement, content)
                       
+                      # Apply File Specific Patches
                       if file in file_specific_patches:
                           for pattern, replacement in file_specific_patches[file]:
                               content = re.sub(pattern, replacement, content)
                       
+                      # Handle Local Prefs & Unlimited Downloads
                       if file == "h30.smali":
                           content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_d_replacement, content)
                           content = re.sub(r'\.method public final y\(\)I[\s\S]*?\.end method', h30_y_replacement, content)
