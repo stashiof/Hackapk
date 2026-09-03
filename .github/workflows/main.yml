@@ -98,6 +98,7 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
+              echo "Error: No APK files found."
               exit 1
             fi
           else
@@ -111,90 +112,164 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Global Deep Patch)
+      - name: Premium Features Unlock (Absolute Method Override)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Deep Smali patches for 100% Unlock..."
+          echo "Overwriting target Smali files with solid byte-level patches..."
           python3 - << 'EOF'
           import os
-          import re
 
-          # 1. Global Patches: Replaces field reading (iget) everywhere in the app
-          global_patches = [
-              # --- n4 (Course Overview Level) ---
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0'), # isExpired = false
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0'), # isFree = false
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1'), # isActive = true
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->u:Z', r'const/4 \1, 0x0'), # trialEnabled = false
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0'), # showTrial = false
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1'), # isEnrolled = true
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Ln4;->G:Z', r'const/4 \1, 0x0'), # isComplementary = false
-              
-              # --- z19 (slh.smali Live Class & Exam Paywall Trigger) ---
-              # (Fix: Sets Locked Status to 0x0 which completely bypasses the Paywall jump!)
-              (r'iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z', r'const/4 \1, 0x0'),
-              
-              # --- tq6 (er6.smali Routine/Home Content) ---
-              (r'iget-object ([vp]\d+), ([vp]\d+), Ltq6;->a:Ljava/lang/String;', r'const-string \1, "full"'),
-              
-              # --- sd6 (zd6.smali Live Class Access Level) ---
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lsd6;->a:Ljava/lang/String;', r'const-string \1, "full"'),
-              
-              # --- t36 (b46.smali Batch Active Status) ---
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lt36;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
-              
-              # --- zt5 (lu5.smali Consumables Status) ---
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lzt5;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
+          # 1. Direct Method / Constructor Injection per target file
+          for root, dirs, files in os.walk("decompiled_app"):
+              for file in files:
+                  filepath = os.path.join(root, file)
 
-              # --- u7c (Phase/Quarter Enrolment & Purchase Locks) ---
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
-              
-              # --- h7c (Data/Batch Level Enrolment & Trial Lock Banners) ---
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;'),
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;'),
-              (r'iget-object ([vp]\d+), ([vp]\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
-          ]
+                  # Patch 1: n4.smali (Course Data Model)
+                  if file == "n4.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      # Force field assignments in constructor
+                      c = c.replace('iput-boolean v13, v0, Ln4;->l:Z', 'const/4 v13, 0x0\n    iput-boolean v13, v0, Ln4;->l:Z')
+                      c = c.replace('iput-boolean v14, v0, Ln4;->m:Z', 'const/4 v14, 0x0\n    iput-boolean v14, v0, Ln4;->m:Z')
+                      c = c.replace('iput-boolean v4, v0, Ln4;->p:Z', 'const/4 v4, 0x0\n    iput-boolean v4, v0, Ln4;->p:Z')
+                      c = c.replace('iput-boolean v1, v0, Ln4;->t:Z', 'const/4 v1, 0x1\n    iput-boolean v1, v0, Ln4;->t:Z')
+                      c = c.replace('iput-boolean v1, v0, Ln4;->u:Z', 'const/4 v1, 0x0\n    iput-boolean v1, v0, Ln4;->u:Z')
+                      c = c.replace('iput-boolean v1, v0, Ln4;->w:Z', 'const/4 v1, 0x1\n    iput-boolean v1, v0, Ln4;->w:Z')
+                      c = c.replace('iput-boolean v1, v0, Ln4;->G:Z', 'const/4 v1, 0x0\n    iput-boolean v1, v0, Ln4;->G:Z')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched n4.smali")
 
-          # 3. Local Prefs Bypass & Unlimited Video Download Hack (999,999 limits)
-          h30_d_replacement = """.method public final d()Ljava/lang/String;
-              .registers 2
+                  # Patch 2: u7c.smali (Quarter & Phase pricing)
+                  elif file == "u7c.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('iput-object p1, p0, Lu7c;->a:Ljava/lang/Boolean;', 'sget-object p1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object p1, p0, Lu7c;->a:Ljava/lang/Boolean;')
+                      c = c.replace('iput-object p4, p0, Lu7c;->d:Ljava/lang/Boolean;', 'sget-object p4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object p4, p0, Lu7c;->d:Ljava/lang/Boolean;')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched u7c.smali")
 
-              const-string v0, "full"
+                  # Patch 3: h7c.smali (Enrollment & Progress Model)
+                  elif file == "h7c.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('iput-object p6, p0, Lh7c;->f:Ljava/lang/Boolean;', 'sget-object p6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object p6, p0, Lh7c;->f:Ljava/lang/Boolean;')
+                      c = c.replace('iput-object p7, p0, Lh7c;->g:Ljava/lang/Boolean;', 'sget-object p7, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object p7, p0, Lh7c;->g:Ljava/lang/Boolean;')
+                      c = c.replace('iput-object p13, p0, Lh7c;->m:Ljava/lang/Boolean;', 'sget-object p13, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object p13, p0, Lh7c;->m:Ljava/lang/Boolean;')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched h7c.smali")
 
-              return-object v0
-          .end method"""
+                  # Patch 4: slh.smali (Router & Paywall Bypass)
+                  elif file == "slh.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      # Eliminate Paywall Fragment transitions (0x7f0a0387)
+                      # When checking is_live or enrollment lock, divert directly to media
+                      c = c.replace('const v2, 0x7f0a0387\n\n    const/4 v3, 0x0\n\n    invoke-virtual {v0, v2, v1, v3}, Lama;->e(ILandroid/os/Bundle;Lema;)V\n\n    return-void', 'return-void')
+                      c = c.replace('iget-boolean v3, v2, Lz19;->o0:Z', 'const/4 v3, 0x0')
+                      c = c.replace('iget-boolean v2, v0, Lz19;->o0:Z', 'const/4 v2, 0x0')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched slh.smali")
 
-          h30_y_replacement = """.method public final y()I
-              .registers 2
+                  # Patch 5: er6.smali (Routine Parser)
+                  elif file == "er6.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('check-cast v25, Ljava/lang/String;', 'const-string v25, "full"')
+                      c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "full"')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched er6.smali")
 
-              const v0, 0xf423f
+                  # Patch 6: zd6.smali (Live Class Parser)
+                  elif file == "zd6.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('check-cast v2, Ljava/lang/String;', 'const-string v2, "full"')
+                      c = c.replace('check-cast v1, Ljava/lang/String;', 'const-string v1, "full"')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched zd6.smali")
 
-              return v0
-          .end method"""
+                  # Patch 7: b46.smali (Batch Parser)
+                  elif file == "b46.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched b46.smali")
 
+                  # Patch 8: lu5.smali (Consumables Parser)
+                  elif file == "lu5.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched lu5.smali")
+
+                  # Patch 9: h30.smali (Storage & Unlimited Download Limits)
+                  elif file == "h30.smali":
+                      with open(filepath, "r") as f:
+                          lines = f.readlines()
+                      new_lines = []
+                      in_d = False
+                      in_y = False
+                      for line in lines:
+                          if ".method public final d()Ljava/lang/String;" in line:
+                              in_d = True
+                              new_lines.append(line)
+                              new_lines.append("    .registers 2\n    const-string v0, \"full\"\n    return-object v0\n.end method\n")
+                              continue
+                          if in_d:
+                              if ".end method" in line:
+                                  in_d = False
+                              continue
+
+                          if ".method public final y()I" in line:
+                              in_y = True
+                              new_lines.append(line)
+                              new_lines.append("    .registers 2\n    const v0, 0x7fffffff\n    return v0\n.end method\n")
+                              continue
+                          if in_y:
+                              if ".end method" in line:
+                                  in_y = False
+                              continue
+
+                          new_lines.append(line)
+
+                      with open(filepath, "w") as f:
+                          f.writelines(new_lines)
+                      print("-> Patched h30.smali")
+
+          # 2. Universal Field-Read Override across all decompiled Smali files
           for root, dirs, files in os.walk("decompiled_app"):
               for file in files:
                   if file.endswith(".smali"):
                       filepath = os.path.join(root, file)
                       with open(filepath, "r") as f:
-                          content = f.read()
-                      
-                      original_content = content
-                      
-                      # Apply Global overrides (Guaranteed to affect EVERY file in the app)
-                      for pattern, replacement in global_patches:
-                          content = re.sub(pattern, replacement, content)
-                      
-                      # Handle Local Prefs & Unlimited Downloads
-                      if file == "h30.smali":
-                          content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_d_replacement, content)
-                          content = re.sub(r'\.method public final y\(\)I[\s\S]*?\.end method', h30_y_replacement, content)
+                          data = f.read()
 
-                      if content != original_content:
+                      orig = data
+                      # n4 field checks
+                      data = data.replace('->l:Z', '->l:Z\n    const/4 v0, 0x0')
+                      data = data.replace('->w:Z', '->w:Z\n    const/4 v0, 0x1')
+                      
+                      # u7c field checks
+                      data = data.replace('Lu7c;->a:Ljava/lang/Boolean;', 'Lu7c;->a:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      data = data.replace('Lu7c;->d:Ljava/lang/Boolean;', 'Lu7c;->d:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
+
+                      # h7c field checks
+                      data = data.replace('Lh7c;->f:Ljava/lang/Boolean;', 'Lh7c;->f:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      data = data.replace('Lh7c;->g:Ljava/lang/Boolean;', 'Lh7c;->g:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
+
+                      if data != orig:
                           with open(filepath, "w") as f:
-                              f.write(content)
-                          print(f"✅ Auto-Patched: {filepath}")
+                              f.write(data)
           EOF
 
       - name: Patch FLAG_SECURE (Screenshot/Record Enable)
