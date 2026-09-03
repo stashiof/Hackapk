@@ -1,0 +1,277 @@
+name: Ultimate App Modder 🚀
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_type:
+        description: 'অ্যাপ কোথা থেকে ডাউনলোড করবেন?'
+        required: true
+        type: choice
+        options:
+          - 'PlayStore'
+          - 'GoogleDrive'
+        default: 'PlayStore'
+      app_identifier:
+        description: 'Play Store Package Name অথবা Google Drive Link'
+        required: true
+        type: string
+        default: 'tech.shikho.android'
+      unlock_premium:
+        description: 'সব প্রিমিয়াম ফিচার আনলক করবেন? (Live Class, Routine, etc.)'
+        required: true
+        type: boolean
+        default: true
+      bypass_secure:
+        description: 'স্ক্রিনশট/রেকর্ড রেস্ট্রিকশন ভাঙতে চান? (FLAG_SECURE)'
+        required: true
+        type: boolean
+        default: true
+      change_name:
+        description: 'অ্যাপের নাম পরিবর্তন করবেন?'
+        required: true
+        type: boolean
+        default: false
+      new_app_name:
+        description: 'নতুন অ্যাপের নাম (যদি নাম পরিবর্তন করতে চান)'
+        required: false
+        type: string
+        default: 'Modded App'
+      change_icon:
+        description: 'অ্যাপের লোগো পরিবর্তন করবেন?'
+        required: true
+        type: boolean
+        default: false
+      icon_url:
+        description: 'নতুন লোগোর ডিরেক্ট লিংক (PNG ফরম্যাট)'
+        required: false
+        type: string
+      clone_app:
+        description: 'ক্লোন অ্যাপ তৈরি করবেন? (আগেরটার পাশাপাশি চালাতে)'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  build_mod:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java & Python
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Tools (apkeep, apktool, etc.)
+        run: |
+          sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
+          pip install gdown pillow
+          cargo install apkeep
+          
+          wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
+          wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
+          wget -q -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: Download & Merge to Universal APK
+        run: |
+          if [ "${{ github.event.inputs.source_type }}" == "PlayStore" ]; then
+            echo "Downloading from Play Store..."
+            mkdir -p downloaded_apks
+            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
+            
+            apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
+            xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
+            apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
+            
+            if [ -n "$apks_file" ]; then
+              java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
+            elif [ -n "$xapk_file" ]; then
+              java -jar APKEditor.jar m -i "$xapk_file" -o universal.apk
+            elif [ "$apk_count" -gt "1" ]; then
+              cd downloaded_apks
+              zip -q -r ../app.apks $(find . -name "*.apk")
+              cd ..
+              java -jar APKEditor.jar m -i app.apks -o universal.apk
+            elif [ "$apk_count" -eq "1" ]; then
+              find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
+            else
+              exit 1
+            fi
+          else
+            echo "Downloading from Google Drive..."
+            gdown "${{ github.event.inputs.app_identifier }}" -O downloaded.apks
+            java -jar APKEditor.jar m -i downloaded.apks -o universal.apk
+          fi
+
+      - name: Decompile APK
+        run: |
+          echo "Decompiling APK..."
+          java -jar apktool.jar d universal.apk -o decompiled_app -f
+
+      - name: Premium Features Unlock (Shikho Mod)
+        if: ${{ github.event.inputs.unlock_premium == 'true' }}
+        run: |
+          echo "Applying Smali patches for Premium Unlock..."
+          python3 - << 'EOF'
+          import os
+          import re
+
+          # Advanced RegEx Patterns for safe, dynamic replacement across devices/versions
+          regex_patches = {
+              "n4.smali": [
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->m:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->m:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->u:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->u:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z'),
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->G:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->G:Z')
+              ],
+              "slh.smali": [
+                  (r'iget-boolean (v\d+), (v\d+), Lz19;->o0:Z[\s\S]*?if-eqz \1, (:cond_\w+)', r'const/4 \1, 0x0\n\n    if-eqz \1, \2')
+              ],
+              "er6.smali": [
+                  (r'move-object/from16 (v\d+), v2[\s\S]*?check-cast \1, Ljava/lang/String;', r'const-string \1, "full"')
+              ],
+              "zd6.smali": [
+                  (r'move-object (v\d+), v0[\s\S]*?check-cast \1, Ljava/lang/String;', r'const-string \1, "full"')
+              ],
+              "b46.smali": [
+                  (r'move-object (v\d+), v0[\s\S]*?check-cast \1, Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+              ],
+              "lu5.smali": [
+                  (r'move-object (v\d+), v0[\s\S]*?check-cast \1, Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+              ],
+              "u7c.smali": [
+                  (r'iput-object (p\d+), (p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;'),
+                  (r'iput-object (p\d+), (p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;')
+              ],
+              "h7c.smali": [
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;'),
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;')
+              ]
+          }
+
+          h30_replacement = """.method public final d()Ljava/lang/String;
+              .registers 2
+
+              const-string v0, "full"
+
+              return-object v0
+          .end method"""
+
+          for root, dirs, files in os.walk("decompiled_app"):
+              for file in files:
+                  filepath = os.path.join(root, file)
+                  
+                  if file in regex_patches:
+                      with open(filepath, "r") as f:
+                          content = f.read()
+                      
+                      original_content = content
+                      for pattern, replacement in regex_patches[file]:
+                          content = re.sub(pattern, replacement, content)
+                      
+                      if content != original_content:
+                          with open(filepath, "w") as f:
+                              f.write(content)
+                          print(f"Patched File: {filepath}")
+                  
+                  if file == "h30.smali":
+                      with open(filepath, "r") as f:
+                          content = f.read()
+                      
+                      new_content = re.sub(r'\.method public final d\(\)Ljava/lang/String;[\s\S]*?\.end method', h30_replacement, content)
+                      
+                      if new_content != content:
+                          with open(filepath, "w") as f:
+                              f.write(new_content)
+                          print(f"Patched Method in: {filepath}")
+          EOF
+
+      - name: Patch FLAG_SECURE (Screenshot/Record Enable)
+        if: ${{ github.event.inputs.bypass_secure == 'true' }}
+        run: |
+          echo "Bypassing FLAG_SECURE..."
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
+
+      - name: Change App Name
+        if: ${{ github.event.inputs.change_name == 'true' }}
+        run: |
+          echo "Changing App Name to ${{ github.event.inputs.new_app_name }}..."
+          find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ github.event.inputs.new_app_name }}<\/string>/g' {} +
+
+      - name: Clone App (Allow multiple installs)
+        if: ${{ github.event.inputs.clone_app == 'true' }}
+        run: |
+          echo "Cloning App..."
+          MANIFEST="decompiled_app/AndroidManifest.xml"
+          ORIGINAL_PKG=$(grep -oP 'package="\K[^"]+' "$MANIFEST" | head -n 1)
+          if [ -n "$ORIGINAL_PKG" ]; then
+            NEW_PKG="${ORIGINAL_PKG}.clone"
+            sed -i "s/package=\"$ORIGINAL_PKG\"/package=\"$NEW_PKG\"/g" "$MANIFEST"
+            sed -i "s/android:authorities=\"/android:authorities=\"clone./g" "$MANIFEST"
+            echo "Package changed from $ORIGINAL_PKG to $NEW_PKG"
+          else
+            echo "Warning: Could not find original package name!"
+          fi
+
+      - name: Change App Icon
+        if: ${{ github.event.inputs.change_icon == 'true' }}
+        run: |
+          echo "Downloading and applying new Icon..."
+          wget -q -O app_icon.png "${{ github.event.inputs.icon_url }}"
+          
+          python3 - << 'EOF'
+          import os
+          from PIL import Image
+          
+          icon_src = "app_icon.png"
+          if not os.path.exists(icon_src):
+              print("Icon download failed or invalid URL.")
+              exit(0)
+              
+          for root, dirs, files in os.walk("decompiled_app/res"):
+              if "anydpi" in root:
+                  for f in files:
+                      if "ic_launcher" in f and f.endswith(".xml"):
+                          os.remove(os.path.join(root, f))
+                          
+          try:
+              orig = Image.open(icon_src).convert("RGBA")
+              sizes = {
+                  "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
+                  "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
+                  "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
+              }
+              
+              for folder, size in sizes.items():
+                  dir_path = os.path.join("decompiled_app/res", folder)
+                  if os.path.exists(dir_path):
+                      resized = orig.resize(size, Image.Resampling.LANCZOS)
+                      for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                          resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
+              print("Icon replaced successfully!")
+          except Exception as e:
+              print(f"Error processing image: {e}")
+          EOF
+
+      - name: Rebuild Optimized APK
+        run: |
+          echo "Rebuilding APK..."
+          java -jar apktool.jar b decompiled_app -o modded_unsigned.apk --use-aapt2
+
+      - name: Sign Modded APK
+        run: |
+          echo "Signing APK..."
+          java -jar uber-apk-signer.jar -a modded_unsigned.apk -o output_signed/
+
+      - name: Upload Final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ultimate-Modded-APK
+          path: output_signed/*.apk
