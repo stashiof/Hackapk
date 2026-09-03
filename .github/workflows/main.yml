@@ -98,7 +98,6 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: No APK files found."
               exit 1
             fi
           else
@@ -115,21 +114,28 @@ jobs:
       - name: Premium Features Unlock (Shikho Mod)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Crash-Free Smali patches for Premium Unlock..."
+          echo "Applying Flawless Smali patches for Premium Unlock..."
           python3 - << 'EOF'
           import os
           import re
 
-          # Advanced and Safe RegEx Patterns
+          # Advanced and Safe RegEx Patterns mapping perfectly to the UI flaws observed
           regex_patches = {
               "n4.smali": [
+                  # isExpired = false
                   (r'iput-boolean (v\d+), (v\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z'),
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->m:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->m:Z'),
+                  # isFree = false (We are treating it as a PAID premium course, not a free preview)
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z'),
+                  # isActive = true
                   (r'iput-boolean (v\d+), (v\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z'),
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->u:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->u:Z'),
+                  # trialEnabled = false (Removes the 'Free trial ended' lock)
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->u:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->u:Z'),
+                  # showTrial = false
                   (r'iput-boolean (v\d+), (v\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z'),
+                  # isEnrolled = true (Forces enrollment)
                   (r'iput-boolean (v\d+), (v\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z'),
-                  (r'iput-boolean (v\d+), (v\d+), Ln4;->G:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->G:Z')
+                  # isComplementary = false
+                  (r'iput-boolean (v\d+), (v\d+), Ln4;->G:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->G:Z')
               ],
               "slh.smali": [
                   # Safe override for Video/Live Class lock status
@@ -152,14 +158,15 @@ jobs:
                   (r'new-instance (v\d+), Lzt5;', r'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n\n    new-instance \1, Lzt5;')
               ],
               "u7c.smali": [
-                  # Phase unlocking
-                  (r'iput-object (p\d+), (p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;'),
-                  (r'iput-object (p\d+), (p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;')
+                  # Phase unlocking (Removes locks from 'Quarter 1', 'Quarter 2' etc.)
+                  (r'iput-object (p\d+), (p\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;'), # has_enrolment = true
+                  (r'iput-object (p\d+), (p\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;') # is_purchasable = false (Removes the buy button)
               ],
               "h7c.smali": [
-                  # Data enrolment unlock
-                  (r'iput-object (p\d+), (p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;'),
-                  (r'iput-object (p\d+), (p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;')
+                  # Deep Data enrolment unlock (Course level)
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;'), # has_enrolment = true
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;'), # has_free_trial_enrolment = false
+                  (r'iput-object (p\d+), (p\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->m:Ljava/lang/Boolean;')  # is_purchasable = false
               ]
           }
 
