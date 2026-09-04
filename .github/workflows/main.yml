@@ -42,7 +42,7 @@ on:
         type: boolean
         default: false
       icon_url:
-        description: 'নতুন লোগোর লিংক (Direct URL বা Google Drive Link)'
+        description: 'নতুন লোগোর লিংক (PNG)'
         required: false
         type: string
       change_vectors:
@@ -193,7 +193,7 @@ jobs:
                       c = f.read()
                   orig = c
 
-                  # 1. slh.smali -> Routing Logic
+                  # 1. slh.smali -> Routing Logic (Live, Recorded & Upcoming separation)
                   if file == "slh.smali":
                       c = re.sub(
                           r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z\s+if-eqz \2, (:cond_\w+))\s+(:cond_\w+)',
@@ -242,14 +242,34 @@ jobs:
 
                   # 7. h7c.smali -> Quarter Model
                   elif file == "h7c.smali":
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->n:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->n:Ljava/lang/Boolean;', c)
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->n:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->n:Ljava/lang/Boolean;',
+                          c
+                      )
 
                   # 8. u7c.smali -> Quarter Pricing Model
                   elif file == "u7c.smali":
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;', c)
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;',
+                          c
+                      )
 
                   # 9. h30.smali -> AppPreference
                   elif file == "h30.smali":
@@ -494,7 +514,6 @@ jobs:
                           updated.add(f)
                           print(f"Updated existing vector: {target_path}")
 
-          # যদি কোনো ফোল্ডারে ফাইল না থাকে তবে মূল drawable ফোল্ডারে তৈরি করে দেয়া
           default_drawable = os.path.join(res_root, "drawable")
           os.makedirs(default_drawable, exist_ok=True)
           for vec in target_vectors:
@@ -517,7 +536,6 @@ jobs:
               if not url_str or not url_str.strip():
                   return False
               url = url_str.strip()
-              # Google Drive Link / ID Detection
               if "drive.google.com" in url or (len(url) >= 25 and not url.startswith("http")):
                   match = re.search(r'[-\w]{25,}', url)
                   if match:
@@ -535,7 +553,6 @@ jobs:
                   except Exception as e:
                       print(f"gdown direct download failed: {e}")
 
-              # Direct HTTP / HTTPS Download
               try:
                   req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                   with urllib.request.urlopen(req) as resp, open(out_path, 'wb') as f:
@@ -654,7 +671,7 @@ jobs:
               print(f"Icon update error: {e}")
           EOF
 
-      - name: Inject Welcome & Disclaimer Dialog
+      - name: Inject Welcome & Disclaimer Dialog (Crash-Free MultiDex Placement)
         if: ${{ github.event.inputs.add_welcome_dialog == 'true' }}
         run: |
           echo "Injecting Custom Welcome Dialog..."
@@ -723,10 +740,21 @@ jobs:
               print(f"Could not find smali file for {full_launcher_class}")
               exit(0)
 
-          print(f"Injecting hook into: {target_smali_file}")
+          # 64K Method Overflow Fix: সর্বমোট smali ফোল্ডারের মধ্যে সর্বশেষ ফোল্ডারে নতুন ফাইল তৈরি করা
+          def get_dex_idx(name):
+              if name == "smali":
+                  return 1
+              m = re.search(r'smali_classes(\d+)', name)
+              return int(m.group(1)) if m else 1
 
-          # Dialog Smali ফাইলসমূহ তৈরি করা
-          helper_dir = os.path.join("decompiled_app", "smali", "com", "mod", "helper")
+          smali_dirs = sorted(
+              [d for d in os.listdir("decompiled_app") if d == "smali" or d.startswith("smali_classes")],
+              key=get_dex_idx
+          )
+          target_smali_root = smali_dirs[-1]
+          print(f"Placing new helper classes safely in: {target_smali_root}")
+
+          helper_dir = os.path.join("decompiled_app", target_smali_root, "com", "mod", "helper")
           os.makedirs(helper_dir, exist_ok=True)
 
           author_name = """${{ github.event.inputs.mod_author }}""".strip() or "Fahim"
@@ -745,13 +773,13 @@ jobs:
           .super Ljava/lang/Object;
 
           .method public constructor <init>()V
-              .registers 1
+              .locals 0
               invoke-direct {{p0}}, Ljava/lang/Object;-><init>()V
               return-void
           .end method
 
           .method public static show(Landroid/app/Activity;)V
-              .registers 8
+              .locals 4
 
               if-nez p0, :cond_exit
 
@@ -807,14 +835,14 @@ jobs:
           .field final synthetic val$prefs:Landroid/content/SharedPreferences;
 
           .method constructor <init>(Landroid/content/SharedPreferences;)V
-              .registers 2
-              iput-object p1, p0, Lcom/mod/helper/WelcomeDialog$1;->val$prefs:Landroid/content/SharedPreferences;
+              .locals 0
               invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+              iput-object p1, p0, Lcom/mod/helper/WelcomeDialog$1;->val$prefs:Landroid/content/SharedPreferences;
               return-void
           .end method
 
           .method public onClick(Landroid/content/DialogInterface;I)V
-              .registers 6
+              .locals 3
               iget-object v0, p0, Lcom/mod/helper/WelcomeDialog$1;->val$prefs:Landroid/content/SharedPreferences;
               invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
               move-result-object v0
@@ -835,14 +863,14 @@ jobs:
           .field final synthetic val$activity:Landroid/app/Activity;
 
           .method constructor <init>(Landroid/app/Activity;)V
-              .registers 2
-              iput-object p1, p0, Lcom/mod/helper/WelcomeDialog$2;->val$activity:Landroid/app/Activity;
+              .locals 0
               invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+              iput-object p1, p0, Lcom/mod/helper/WelcomeDialog$2;->val$activity:Landroid/app/Activity;
               return-void
           .end method
 
           .method public onClick(Landroid/content/DialogInterface;I)V
-              .registers 4
+              .locals 1
               invoke-interface {p1}, Landroid/content/DialogInterface;->dismiss()V
               iget-object v0, p0, Lcom/mod/helper/WelcomeDialog$2;->val$activity:Landroid/app/Activity;
               if-eqz v0, :cond_finish
@@ -861,7 +889,6 @@ jobs:
           with open(os.path.join(helper_dir, "WelcomeDialog$2.smali"), "w", encoding="utf-8") as f:
               f.write(dialog_2_smali)
 
-          # Launcher Activity-তে onCreate মেথডে ডায়ালগ কল যুক্ত করা
           with open(target_smali_file, "r", encoding="utf-8") as f:
               code = f.read()
 
@@ -876,8 +903,6 @@ jobs:
               with open(target_smali_file, "w", encoding="utf-8") as f:
                   f.write(code)
               print("Successfully injected Welcome Dialog invocation into Launcher Activity!")
-          else:
-              print("Hook already present.")
           EOF
 
       - name: Rebuild Optimized APK
