@@ -119,16 +119,13 @@ jobs:
           python3 - << 'EOF'
           import os
 
-          # 1. Direct Method / Constructor Injection per target file
           for root, dirs, files in os.walk("decompiled_app"):
               for file in files:
                   filepath = os.path.join(root, file)
 
-                  # Patch 1: n4.smali (Course Data Model)
                   if file == "n4.smali":
                       with open(filepath, "r") as f:
                           c = f.read()
-                      # Force field assignments in constructor
                       c = c.replace('iput-boolean v13, v0, Ln4;->l:Z', 'const/4 v13, 0x0\n    iput-boolean v13, v0, Ln4;->l:Z')
                       c = c.replace('iput-boolean v14, v0, Ln4;->m:Z', 'const/4 v14, 0x0\n    iput-boolean v14, v0, Ln4;->m:Z')
                       c = c.replace('iput-boolean v4, v0, Ln4;->p:Z', 'const/4 v4, 0x0\n    iput-boolean v4, v0, Ln4;->p:Z')
@@ -140,7 +137,6 @@ jobs:
                           f.write(c)
                       print("-> Patched n4.smali")
 
-                  # Patch 2: u7c.smali (Quarter & Phase pricing)
                   elif file == "u7c.smali":
                       with open(filepath, "r") as f:
                           c = f.read()
@@ -150,7 +146,6 @@ jobs:
                           f.write(c)
                       print("-> Patched u7c.smali")
 
-                  # Patch 3: h7c.smali (Enrollment & Progress Model)
                   elif file == "h7c.smali":
                       with open(filepath, "r") as f:
                           c = f.read()
@@ -161,12 +156,9 @@ jobs:
                           f.write(c)
                       print("-> Patched h7c.smali")
 
-                  # Patch 4: slh.smali (Router & Paywall Bypass)
                   elif file == "slh.smali":
                       with open(filepath, "r") as f:
                           c = f.read()
-                      # Eliminate Paywall Fragment transitions (0x7f0a0387)
-                      # When checking is_live or enrollment lock, divert directly to media
                       c = c.replace('const v2, 0x7f0a0387\n\n    const/4 v3, 0x0\n\n    invoke-virtual {v0, v2, v1, v3}, Lama;->e(ILandroid/os/Bundle;Lema;)V\n\n    return-void', 'return-void')
                       c = c.replace('iget-boolean v3, v2, Lz19;->o0:Z', 'const/4 v3, 0x0')
                       c = c.replace('iget-boolean v2, v0, Lz19;->o0:Z', 'const/4 v2, 0x0')
@@ -174,45 +166,33 @@ jobs:
                           f.write(c)
                       print("-> Patched slh.smali")
 
-                  # Patch 5: er6.smali (Routine Parser)
-                  elif file == "er6.smali":
+                  elif file == "d43.smali":
+                      with open(filepath, "r") as f:
+                          c = f.read()
+                      c = c.replace('invoke-virtual {v2, v9}, Lh30;->C(Ljava/lang/String;)V', 'const-string v9, "full"\n    invoke-virtual {v2, v9}, Lh30;->C(Ljava/lang/String;)V')
+                      with open(filepath, "w") as f:
+                          f.write(c)
+                      print("-> Patched d43.smali")
+
+                  elif file in ["er6.smali", "zd6.smali"]:
                       with open(filepath, "r") as f:
                           c = f.read()
                       c = c.replace('check-cast v25, Ljava/lang/String;', 'const-string v25, "full"')
                       c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "full"')
-                      with open(filepath, "w") as f:
-                          f.write(c)
-                      print("-> Patched er6.smali")
-
-                  # Patch 6: zd6.smali (Live Class Parser)
-                  elif file == "zd6.smali":
-                      with open(filepath, "r") as f:
-                          c = f.read()
                       c = c.replace('check-cast v2, Ljava/lang/String;', 'const-string v2, "full"')
                       c = c.replace('check-cast v1, Ljava/lang/String;', 'const-string v1, "full"')
                       with open(filepath, "w") as f:
                           f.write(c)
-                      print("-> Patched zd6.smali")
+                      print(f"-> Patched {file}")
 
-                  # Patch 7: b46.smali (Batch Parser)
-                  elif file == "b46.smali":
+                  elif file in ["b46.smali", "lu5.smali"]:
                       with open(filepath, "r") as f:
                           c = f.read()
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       with open(filepath, "w") as f:
                           f.write(c)
-                      print("-> Patched b46.smali")
+                      print(f"-> Patched {file}")
 
-                  # Patch 8: lu5.smali (Consumables Parser)
-                  elif file == "lu5.smali":
-                      with open(filepath, "r") as f:
-                          c = f.read()
-                      c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
-                      with open(filepath, "w") as f:
-                          f.write(c)
-                      print("-> Patched lu5.smali")
-
-                  # Patch 9: h30.smali (Storage & Unlimited Download Limits)
                   elif file == "h30.smali":
                       with open(filepath, "r") as f:
                           lines = f.readlines()
@@ -246,7 +226,6 @@ jobs:
                           f.writelines(new_lines)
                       print("-> Patched h30.smali")
 
-          # 2. Universal Field-Read Override across all decompiled Smali files
           for root, dirs, files in os.walk("decompiled_app"):
               for file in files:
                   if file.endswith(".smali"):
@@ -255,15 +234,10 @@ jobs:
                           data = f.read()
 
                       orig = data
-                      # n4 field checks
                       data = data.replace('->l:Z', '->l:Z\n    const/4 v0, 0x0')
                       data = data.replace('->w:Z', '->w:Z\n    const/4 v0, 0x1')
-                      
-                      # u7c field checks
                       data = data.replace('Lu7c;->a:Ljava/lang/Boolean;', 'Lu7c;->a:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       data = data.replace('Lu7c;->d:Ljava/lang/Boolean;', 'Lu7c;->d:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
-
-                      # h7c field checks
                       data = data.replace('Lh7c;->f:Ljava/lang/Boolean;', 'Lh7c;->f:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       data = data.replace('Lh7c;->g:Ljava/lang/Boolean;', 'Lh7c;->g:Ljava/lang/Boolean;\n    sget-object v0, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
 
