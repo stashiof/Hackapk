@@ -8,11 +8,11 @@ on:
         required: true
         type: choice
         options:
-          - 'PlayStore'
           - 'GoogleDrive'
-        default: 'PlayStore'
+          - 'PlayStore'
+        default: 'GoogleDrive'
       app_identifier:
-        description: 'Play Store Package Name অথবা Google Drive Link'
+        description: 'Google Drive Link অথবা Play Store Package Name'
         required: true
         type: string
         default: 'tech.shikho.android'
@@ -68,7 +68,7 @@ jobs:
       - name: Install Tools
         run: |
           sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
-          pip install gdown pillow
+          pip install --upgrade gdown pillow
 
           wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
@@ -77,12 +77,12 @@ jobs:
       - name: Download & Merge APK
         run: |
           if [ "${{ github.event.inputs.source_type }}" == "PlayStore" ]; then
-            echo "Installing apkeep for Play Store download..."
+            echo "Installing apkeep..."
             cargo install apkeep
-
+            
             echo "Downloading from Play Store..."
             mkdir -p downloaded_apks
-            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/ || true
+            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
             
             apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
             xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
@@ -100,17 +100,30 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: Play Store download failed. Please use Google Drive option."
+              echo "Error: Play Store থেকে কোনো APK ফাইল পাওয়া যায়নি।"
               exit 1
             fi
           else
-            echo "Downloading from Google Drive..."
-            gdown --fuzzy "${{ github.event.inputs.app_identifier }}" -O downloaded_drive_file
-            
-            if file downloaded_drive_file | grep -qi "Zip"; then
-              java -jar APKEditor.jar m -i downloaded_drive_file -o universal.apk || cp downloaded_drive_file universal.apk
+            echo "Downloading from Google Drive via Python API..."
+            python3 - << 'PYEOF'
+          import gdown, os, sys
+
+          url = """${{ github.event.inputs.app_identifier }}""".strip()
+          print(f"Target URL: {url}")
+          output = "downloaded_drive_file"
+          
+          res = gdown.download(url=url, output=output, quiet=False, fuzzy=True)
+          if not res or not os.path.exists(output):
+              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। ফাইলের পারমিশন 'Anyone with the link' দেওয়া আছে কিনা নিশ্চিত করুন।")
+              sys.exit(1)
+          PYEOF
+
+            echo "Detecting file format and merging..."
+            if java -jar APKEditor.jar m -i downloaded_drive_file -o universal.apk; then
+              echo "Bundle merged successfully into universal.apk"
             else
-              mv downloaded_drive_file universal.apk
+              echo "Not a split bundle, using raw file as universal.apk..."
+              cp downloaded_drive_file universal.apk
             fi
           fi
 
@@ -141,7 +154,7 @@ jobs:
                       c = f.read()
                   orig = c
 
-                  # 1. slh.smali -> Force Intrinsics.areEqual to TRUE ("Full" match)
+                  # 1. slh.smali -> Force Intrinsics.areEqual to TRUE ("Full" match bypasses paywall)
                   if file == "slh.smali":
                       c = re.sub(
                           r'(invoke-static \{[^\}]+\}, Loa8;->e\(Ljava/lang/Object;Ljava/lang/Object;\)Z\s+move-result ([vp]\d+))',
