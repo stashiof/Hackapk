@@ -67,48 +67,8 @@ jobs:
 
       - name: Install Tools
         run: |
-          sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet jq
+          sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
           pip install gdown pillow
-
-          # Fail-safe Dynamic apkeep installer
-          echo "Installing apkeep..."
-          python3 - << 'PYEOF'
-          import urllib.request, json, os, stat, tarfile, zipfile
-
-          installed = False
-          try:
-              req = urllib.request.Request("https://api.github.com/repos/EFForg/apkeep/releases/latest", headers={"User-Agent": "Mozilla/5.0"})
-              res = json.loads(urllib.request.urlopen(req).read().decode())
-              for asset in res.get("assets", []):
-                  name = asset.get("name", "")
-                  if "x86_64" in name and ("linux" in name or "unknown-linux" in name):
-                      url = asset.get("browser_download_url")
-                      print(f"Downloading from: {url}")
-                      urllib.request.urlretrieve(url, "apkeep_dl")
-                      if name.endswith(".tar.gz") or name.endswith(".tgz"):
-                          with tarfile.open("apkeep_dl", "r:gz") as tar:
-                              tar.extractall(".")
-                      elif name.endswith(".zip"):
-                          with zipfile.ZipFile("apkeep_dl", "r") as z:
-                              z.extractall(".")
-                      else:
-                          os.rename("apkeep_dl", "apkeep")
-                      
-                      if os.path.exists("apkeep"):
-                          os.chmod("apkeep", stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                          os.system("sudo mv apkeep /usr/local/bin/")
-                          installed = True
-                          break
-          except Exception as e:
-              print(f"API install error: {e}")
-
-          if not installed:
-              print("Fallback to cargo install...")
-              os.system("cargo install apkeep")
-          PYEOF
-
-          # Verify apkeep binary
-          apkeep --version || { echo "apkeep installation failed"; exit 1; }
 
           wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
@@ -117,10 +77,11 @@ jobs:
       - name: Download & Merge APK
         run: |
           if [ "${{ github.event.inputs.source_type }}" == "PlayStore" ]; then
+            echo "Installing apkeep for Play Store download..."
+            cargo install apkeep
+
             echo "Downloading from Play Store..."
             mkdir -p downloaded_apks
-            
-            # Download with error capture
             apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/ || true
             
             apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
@@ -139,14 +100,14 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "::error::Play Store থেকে অ্যাপ নামানো যায়নি (GitHub Actions IP রেস্ট্রিকশন)। অ্যাপটি Google Drive-এ আপলোড করে লিঙ্ক দিন এবং GoogleDrive অপশন সিলেক্ট করুন।"
+              echo "Error: Play Store download failed. Please use Google Drive option."
               exit 1
             fi
           else
             echo "Downloading from Google Drive..."
             gdown --fuzzy "${{ github.event.inputs.app_identifier }}" -O downloaded_drive_file
             
-            if file downloaded_drive_file | grep -q "Zip"; then
+            if file downloaded_drive_file | grep -qi "Zip"; then
               java -jar APKEditor.jar m -i downloaded_drive_file -o universal.apk || cp downloaded_drive_file universal.apk
             else
               mv downloaded_drive_file universal.apk
@@ -158,7 +119,7 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Crash-Free Precision Patch)
+      - name: Premium Features Unlock (Precision Smali Patch)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
           echo "Applying Verified Smali Patches..."
