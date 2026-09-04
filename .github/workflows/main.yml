@@ -104,25 +104,33 @@ jobs:
               exit 1
             fi
           else
-            echo "Downloading from Google Drive via Python API..."
+            echo "Downloading from Google Drive..."
             python3 - << 'PYEOF'
-          import gdown, os, sys
+          import gdown, re, os, sys
 
-          url = """${{ github.event.inputs.app_identifier }}""".strip()
-          print(f"Target URL: {url}")
+          raw_input = """${{ github.event.inputs.app_identifier }}""".strip()
           output = "downloaded_drive_file"
-          
-          res = gdown.download(url=url, output=output, quiet=False, fuzzy=True)
-          if not res or not os.path.exists(output):
-              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। ফাইলের পারমিশন 'Anyone with the link' দেওয়া আছে কিনা নিশ্চিত করুন।")
+
+          # Extract file ID from any Google Drive link format
+          match = re.search(r'[-\w]{25,}', raw_input)
+          if match:
+              file_id = match.group(0)
+              print(f"Extracted Google Drive File ID: {file_id}")
+              gdown.download(id=file_id, output=output, quiet=False)
+          else:
+              print(f"Downloading directly from URL: {raw_input}")
+              gdown.download(url=raw_input, output=output, quiet=False)
+
+          if not os.path.exists(output) or os.path.getsize(output) == 0:
+              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। নিশ্চিত করুন ফাইলের শেয়ার পারমিশন 'Anyone with the link' দেওয়া আছে।")
               sys.exit(1)
           PYEOF
 
-            echo "Detecting file format and merging..."
+            echo "Checking file type..."
             if java -jar APKEditor.jar m -i downloaded_drive_file -o universal.apk; then
               echo "Bundle merged successfully into universal.apk"
             else
-              echo "Not a split bundle, using raw file as universal.apk..."
+              echo "Standard APK detected, copying to universal.apk..."
               cp downloaded_drive_file universal.apk
             fi
           fi
