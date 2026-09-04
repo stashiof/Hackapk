@@ -112,10 +112,10 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Safe Regex Patch)
+      - name: Premium Features Unlock (Safe & Structural Mod)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Crash-Free Smali Patches..."
+          echo "Applying Corrected Smali Patches..."
           python3 - << 'EOF'
           import os, re
 
@@ -123,51 +123,46 @@ jobs:
               for file in files:
                   filepath = os.path.join(root, file)
 
+                  # 1. Academic Program Model (Fixes "Not Enrolled" issue)
                   if file == "n4.smali":
                       with open(filepath, "r") as f: c = f.read()
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->p:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->u:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->u:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->G:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->G:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c) # isExpired = False
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c) # isActive = True
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c) # isEnrolled = True
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c) # showTrial = False
+                      with open(filepath, "w") as f: f.write(c)
+
+                  # 2. Routine & Live Class Models (Safely Forces Access Level)
+                  elif file in ["tq6.smali", "sd6.smali"]:
+                      with open(filepath, "r") as f: c = f.read()
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L(tq6|sd6);->a:Ljava/lang/String;', r'const-string \1, "full"\n    iput-object \1, \2, L\3;->a:Ljava/lang/String;', c)
+                      with open(filepath, "w") as f: f.write(c)
+
+                  # 3. Enrollment Detail Models (Fixes UI Enrollment Status)
+                  elif file == "h7c.smali":
+                      with open(filepath, "r") as f: c = f.read()
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;', c)
                       with open(filepath, "w") as f: f.write(c)
 
                   elif file == "u7c.smali":
                       with open(filepath, "r") as f: c = f.read()
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;', c)
                       with open(filepath, "w") as f: f.write(c)
 
-                  elif file == "h7c.smali":
-                      with open(filepath, "r") as f: c = f.read()
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->m:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->m:Ljava/lang/Boolean;', c)
-                      with open(filepath, "w") as f: f.write(c)
-
+                  # 4. Content Router (Bypasses Paywall Blocks)
                   elif file == "slh.smali":
                       with open(filepath, "r") as f: c = f.read()
-                      c = c.replace('const v2, 0x7f0a0387\n\n    const/4 v3, 0x0\n\n    invoke-virtual {v0, v2, v1, v3}, Lama;->e(ILandroid/os/Bundle;Lema;)V\n\n    return-void', 'return-void')
+                      c = c.replace('const v2, 0x7f0a0387\n\n    const/4 v3, 0x0\n\n    invoke-virtual {v0, v2, v1, v3}, Lama;->e(ILandroid/os/Bundle;Lema;)V', 'return-void')
                       c = re.sub(r'iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z', r'const/4 \1, 0x0', c)
                       with open(filepath, "w") as f: f.write(c)
 
+                  # 5. Class Click Interceptor (Saves "full" to SharedPreferences)
                   elif file == "d43.smali":
                       with open(filepath, "r") as f: c = f.read()
                       c = re.sub(r'invoke-virtual \{([vp]\d+), ([vp]\d+)\}, Lh30;->C\(Ljava/lang/String;\)V', r'const-string \2, "full"\n    invoke-virtual {\1, \2}, Lh30;->C(Ljava/lang/String;)V', c)
                       with open(filepath, "w") as f: f.write(c)
 
-                  elif file in ["er6.smali", "zd6.smali"]:
-                      with open(filepath, "r") as f: c = f.read()
-                      c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "full"', c)
-                      with open(filepath, "w") as f: f.write(c)
-
-                  elif file in ["b46.smali", "lu5.smali"]:
-                      with open(filepath, "r") as f: c = f.read()
-                      c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;', c)
-                      with open(filepath, "w") as f: f.write(c)
-
+                  # 6. User Preferences Manager (Grants full access & unlimited downloads)
                   elif file == "h30.smali":
                       with open(filepath, "r") as f: c = f.read()
                       c = re.sub(r'\.method public final d\(\)Ljava/lang/String;.*?\.end method', '.method public final d()Ljava/lang/String;\n    .registers 2\n    const-string v0, "full"\n    return-object v0\n.end method', c, flags=re.DOTALL)
