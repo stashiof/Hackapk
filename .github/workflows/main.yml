@@ -111,7 +111,6 @@ jobs:
           raw_input = """${{ github.event.inputs.app_identifier }}""".strip()
           output = "downloaded_drive_file"
 
-          # Extract file ID from any Google Drive link format
           match = re.search(r'[-\w]{25,}', raw_input)
           if match:
               file_id = match.group(0)
@@ -122,7 +121,7 @@ jobs:
               gdown.download(url=raw_input, output=output, quiet=False)
 
           if not os.path.exists(output) or os.path.getsize(output) == 0:
-              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। নিশ্চিত করুন ফাইলের শেয়ার পারমিশন 'Anyone with the link' দেওয়া আছে।")
+              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। শেয়ার পারমিশন 'Anyone with the link' নিশ্চিত করুন।")
               sys.exit(1)
           PYEOF
 
@@ -162,26 +161,33 @@ jobs:
                       c = f.read()
                   orig = c
 
-                  # 1. slh.smali -> Force Intrinsics.areEqual to TRUE ("Full" match bypasses paywall)
+                  # 1. slh.smali -> Routing Logic: Live vs Recorded vs Upcoming separation
                   if file == "slh.smali":
+                      # (A) Routine (method f): If class is NOT live and has NO recording (Upcoming), do not join live
                       c = re.sub(
-                          r'(invoke-static \{[^\}]+\}, Loa8;->e\(Ljava/lang/Object;Ljava/lang/Object;\)Z\s+move-result ([vp]\d+))',
-                          r'\1\n    const/4 \2, 0x1',
-                          c
-                      )
-                      c = re.sub(
-                          r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z)',
-                          r'\1\n    const/4 \2, 0x1',
+                          r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z\s+if-eqz \2, (:cond_\w+))\s+(:cond_\w+)',
+                          r'\1\n    return-void\n\n    \5',
                           c
                       )
 
-                  # 2 & 3. er6.smali, zd6.smali -> Model parsers for access_level
+                      # (B) UpcomingLesson (method g): If class has no recording and is upcoming, route to upcoming dialog (:cond_2af)
+                      c = re.sub(
+                          r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z\s+if-eqz \2, :cond_\w+\s+)goto :goto_\w+',
+                          r'\1goto :cond_2af',
+                          c
+                      )
+
+                      # (C) Remove only the paywall redirection jumps (0x7f0a0387)
+                      c = re.sub(r'if-eqz ([vp]\d+), :cond_23d', r'# bypassed if-eqz \1, :cond_23d', c)
+                      c = re.sub(r'if-eqz ([vp]\d+), :cond_2ac', r'# bypassed if-eqz \1, :cond_2ac', c)
+
+                  # 2 & 3. er6.smali, zd6.smali -> Routine & Class Model Access Level
                   elif file == "er6.smali":
                       c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "Full"')
                   elif file == "zd6.smali":
                       c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "Full"', c, count=1)
 
-                  # 4 & 5. tq6.smali, sd6.smali -> Model Constructors
+                  # 4 & 5. tq6.smali, sd6.smali -> Routine & Live Class Model Constructors
                   elif file == "tq6.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Ltq6;->a:Ljava/lang/String;',
@@ -204,7 +210,7 @@ jobs:
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
 
-                  # 7 & 8. h7c.smali, u7c.smali -> Enrollment status models
+                  # 7 & 8. h7c.smali, u7c.smali -> Enrollment Models
                   elif file == "h7c.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
@@ -223,7 +229,7 @@ jobs:
                           c
                       )
 
-                  # 9. h30.smali -> AppPreference (Access level returning "Full")
+                  # 9. h30.smali -> AppPreference (Access level "Full")
                   elif file == "h30.smali":
                       c = re.sub(
                           r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
@@ -238,13 +244,13 @@ jobs:
                           flags=re.DOTALL
                       )
 
-                  # 10 & 12. b46.smali, lu5.smali -> Active subscription deserializers
+                  # 10 & 12. b46.smali, lu5.smali -> Active Subscription Deserializers
                   elif file == "b46.smali":
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                   elif file == "lu5.smali":
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
 
-                  # 11. d43.smali -> Upcoming lesson access level setting
+                  # 11. d43.smali -> Lesson Click Access Level
                   elif file == "d43.smali":
                       c = re.sub(
                           r'invoke-virtual \{([vp]\d+), ([vp]\d+)\}, Lh30;->C\(Ljava/lang/String;\)V',
@@ -252,7 +258,7 @@ jobs:
                           c
                       )
 
-                  # 13 & 14. d8c.smali, m7c.smali -> Enrollment Deserializers
+                  # 13 & 14. d8c.smali, m7c.smali -> Course Enrollment Parsers
                   elif file == "d8c.smali":
                       c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                   elif file == "m7c.smali":
