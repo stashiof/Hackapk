@@ -69,8 +69,12 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
           pip install gdown pillow
-          cargo install apkeep
           
+          # Fast direct binary install for apkeep
+          curl -sL https://github.com/EFForg/apkeep/releases/download/0.14.2/apkeep-x86_64-unknown-linux-gnu -o apkeep
+          chmod +x apkeep
+          sudo mv apkeep /usr/local/bin/
+
           wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -q -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
@@ -103,8 +107,13 @@ jobs:
             fi
           else
             echo "Downloading from Google Drive..."
-            gdown "${{ github.event.inputs.app_identifier }}" -O downloaded.apks
-            java -jar APKEditor.jar m -i downloaded.apks -o universal.apk
+            gdown --fuzzy "${{ github.event.inputs.app_identifier }}" -O downloaded_drive_file
+            
+            if file downloaded_drive_file | grep -q "Zip"; then
+              java -jar APKEditor.jar m -i downloaded_drive_file -o universal.apk || cp downloaded_drive_file universal.apk
+            else
+              mv downloaded_drive_file universal.apk
+            fi
           fi
 
       - name: Decompile APK
@@ -112,10 +121,10 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Premium Features Unlock (Precision Patch for all 14 Files)
+      - name: Premium Features Unlock (Crash-Free Precision Patch)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Crash-Free Smali Patches..."
+          echo "Applying Verified Smali Patches..."
           python3 - << 'EOF'
           import os, re
 
@@ -127,66 +136,116 @@ jobs:
 
           for root, dirs, files in os.walk("decompiled_app"):
               for file in files:
-                  if file not in target_files: continue
+                  if file not in target_files: 
+                      continue
                   filepath = os.path.join(root, file)
-                  with open(filepath, "r") as f: c = f.read()
+                  with open(filepath, "r", encoding="utf-8") as f:
+                      c = f.read()
                   orig = c
 
-                  # 1. slh.smali -> Bypass Paywall Router & Exam premium check
+                  # 1. slh.smali -> Force Intrinsics.areEqual to TRUE and bypass premium checks
                   if file == "slh.smali":
-                      c = c.replace('const v2, 0x7f0a0387\n\n    const/4 v3, 0x0\n\n    invoke-virtual {v0, v2, v1, v3}, Lama;->e(ILandroid/os/Bundle;Lema;)V', 'return-void')
-                      c = re.sub(r'iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z', r'const/4 \1, 0x1', c)
+                      # Force "Full" access level check result to true (1)
+                      c = re.sub(
+                          r'(invoke-static \{[^\}]+\}, Loa8;->e\(Ljava/lang/Object;Ljava/lang/Object;\)Z\s+move-result ([vp]\d+))',
+                          r'\1\n    const/4 \2, 0x1',
+                          c
+                      )
+                      # Bypass exam/lesson locked condition
+                      c = re.sub(
+                          r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z)',
+                          r'\1\n    const/4 \2, 0x1',
+                          c
+                      )
 
-                  # 2 & 3. er6.smali, zd6.smali -> Routine & Live Class parser (Specific register access_level bypass)
+                  # 2 & 3. er6.smali, zd6.smali -> Model parsers for access_level
                   elif file == "er6.smali":
-                      c = c.replace('check-cast v25, Ljava/lang/String;', 'const-string v25, "full"')
+                      # v4 is access_level in pswitch_1ea (v25 is phase_id)
+                      c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "Full"')
                   elif file == "zd6.smali":
-                      c = c.replace('check-cast v2, Ljava/lang/String;', 'const-string v2, "full"')
+                      c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "Full"', c, count=1)
 
                   # 4 & 5. tq6.smali, sd6.smali -> Routine & Live Class Model Constructor
                   elif file == "tq6.smali":
-                      c = re.sub(r'iput-object ([vp]\d+), p0, Ltq6;->a:Ljava/lang/String;', r'const-string \1, "full"\n    iput-object \1, p0, Ltq6;->a:Ljava/lang/String;', c)
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Ltq6;->a:Ljava/lang/String;',
+                          r'const-string \1, "Full"\n    iput-object \1, \2, Ltq6;->a:Ljava/lang/String;',
+                          c
+                      )
                   elif file == "sd6.smali":
-                      c = re.sub(r'iput-object ([vp]\d+), p0, Lsd6;->a:Ljava/lang/String;', r'const-string \1, "full"\n    iput-object \1, p0, Lsd6;->a:Ljava/lang/String;', c)
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lsd6;->a:Ljava/lang/String;',
+                          r'const-string \1, "Full"\n    iput-object \1, \2, Lsd6;->a:Ljava/lang/String;',
+                          c
+                      )
 
-                  # 6. n4.smali -> Academic Program Model (Fixes Enrollment Status globally)
+                  # 6. n4.smali -> Academic Program Model
                   elif file == "n4.smali":
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c) # isExpired
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c) # isActive
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c) # isEnrolled
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c) # showTrial
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c) # hasAnimatedVideo
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
 
-                  # 7 & 8. h7c.smali, u7c.smali -> Enrollment & Phase pricing Models
+                  # 7 & 8. h7c.smali, u7c.smali -> Enrollment status models
                   elif file == "h7c.smali":
-                      c = re.sub(r'iput-object ([vp]\d+), p0, Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, p0, Lh7c;->f:Ljava/lang/Boolean;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), p0, Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, p0, Lh7c;->g:Ljava/lang/Boolean;', c)
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;',
+                          c
+                      )
                   elif file == "u7c.smali":
-                      c = re.sub(r'iput-object ([vp]\d+), p0, Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, p0, Lu7c;->a:Ljava/lang/Boolean;', c)
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
+                          c
+                      )
 
-                  # 9. h30.smali -> Local Storage Prefs (Access level & Limit bypass)
+                  # 9. h30.smali -> AppPreference (Access level returning "Full")
                   elif file == "h30.smali":
-                      c = re.sub(r'\.method public final d\(\)Ljava/lang/String;.*?\.end method', '.method public final d()Ljava/lang/String;\n    .registers 2\n    const-string v0, "full"\n    return-object v0\n.end method', c, flags=re.DOTALL)
-                      c = re.sub(r'\.method public final y\(\)I.*?\.end method', '.method public final y()I\n    .registers 2\n    const v0, 0x7fffffff\n    return v0\n.end method', c, flags=re.DOTALL)
+                      c = re.sub(
+                          r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
+                          '.method public final d()Ljava/lang/String;\n    .registers 2\n    const-string v0, "Full"\n    return-object v0\n.end method',
+                          c,
+                          flags=re.DOTALL
+                      )
+                      c = re.sub(
+                          r'\.method public final y\(\)I.*?\.end method',
+                          '.method public final y()I\n    .registers 2\n    const v0, 0x7fffffff\n    return v0\n.end method',
+                          c,
+                          flags=re.DOTALL
+                      )
 
-                  # 10 & 12. b46.smali, lu5.smali -> Sub parsers for batch/consumables
+                  # 10 & 12. b46.smali, lu5.smali -> Active subscription deserializers
                   elif file == "b46.smali":
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                   elif file == "lu5.smali":
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
 
-                  # 11. d43.smali -> Event Click Interceptor
+                  # 11. d43.smali -> Upcoming lesson access level setting
                   elif file == "d43.smali":
-                      c = re.sub(r'invoke-virtual \{([vp]\d+), ([vp]\d+)\}, Lh30;->C\(Ljava/lang/String;\)V', r'const-string \2, "full"\n    invoke-virtual {\1, \2}, Lh30;->C(Ljava/lang/String;)V', c)
+                      c = re.sub(
+                          r'invoke-virtual \{([vp]\d+), ([vp]\d+)\}, Lh30;->C\(Ljava/lang/String;\)V',
+                          r'const-string \2, "Full"\n    invoke-virtual {\1, \2}, Lh30;->C(Ljava/lang/String;)V',
+                          c
+                      )
 
-                  # 13 & 14. d8c.smali, m7c.smali -> Master Parsers for Enrollments
+                  # 13 & 14. d8c.smali, m7c.smali -> Enrollment Deserializers
                   elif file == "d8c.smali":
                       c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                   elif file == "m7c.smali":
                       c = c.replace('check-cast v9, Ljava/lang/Boolean;', 'sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      c = c.replace('check-cast v10, Ljava/lang/Boolean;', 'sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
 
                   if c != orig:
-                      with open(filepath, "w") as f: f.write(c)
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(c)
                       print(f"-> Safely Patched {file}")
           EOF
 
@@ -194,8 +253,8 @@ jobs:
         if: ${{ github.event.inputs.bypass_secure == 'true' }}
         run: |
           echo "Bypassing FLAG_SECURE..."
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
-          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
+          find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
 
       - name: Change App Name
         if: ${{ github.event.inputs.change_name == 'true' }}
@@ -233,7 +292,10 @@ jobs:
               if "anydpi" in root:
                   for f in files:
                       if "ic_launcher" in f and f.endswith(".xml"):
-                          os.remove(os.path.join(root, f))
+                          try:
+                              os.remove(os.path.join(root, f))
+                          except:
+                              pass
                           
           try:
               orig = Image.open(icon_src).convert("RGBA")
@@ -249,7 +311,7 @@ jobs:
                       for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
                           resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
           except Exception as e:
-              pass
+              print(f"Icon update error: {e}")
           EOF
 
       - name: Rebuild Optimized APK
