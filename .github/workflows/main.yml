@@ -67,13 +67,48 @@ jobs:
 
       - name: Install Tools
         run: |
-          sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
+          sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet jq
           pip install gdown pillow
-          
-          # Fast direct binary install for apkeep
-          curl -sL https://github.com/EFForg/apkeep/releases/download/0.14.2/apkeep-x86_64-unknown-linux-gnu -o apkeep
-          chmod +x apkeep
-          sudo mv apkeep /usr/local/bin/
+
+          # Fail-safe Dynamic apkeep installer
+          echo "Installing apkeep..."
+          python3 - << 'PYEOF'
+          import urllib.request, json, os, stat, tarfile, zipfile
+
+          installed = False
+          try:
+              req = urllib.request.Request("https://api.github.com/repos/EFForg/apkeep/releases/latest", headers={"User-Agent": "Mozilla/5.0"})
+              res = json.loads(urllib.request.urlopen(req).read().decode())
+              for asset in res.get("assets", []):
+                  name = asset.get("name", "")
+                  if "x86_64" in name and ("linux" in name or "unknown-linux" in name):
+                      url = asset.get("browser_download_url")
+                      print(f"Downloading from: {url}")
+                      urllib.request.urlretrieve(url, "apkeep_dl")
+                      if name.endswith(".tar.gz") or name.endswith(".tgz"):
+                          with tarfile.open("apkeep_dl", "r:gz") as tar:
+                              tar.extractall(".")
+                      elif name.endswith(".zip"):
+                          with zipfile.ZipFile("apkeep_dl", "r") as z:
+                              z.extractall(".")
+                      else:
+                          os.rename("apkeep_dl", "apkeep")
+                      
+                      if os.path.exists("apkeep"):
+                          os.chmod("apkeep", stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+                          os.system("sudo mv apkeep /usr/local/bin/")
+                          installed = True
+                          break
+          except Exception as e:
+              print(f"API install error: {e}")
+
+          if not installed:
+              print("Fallback to cargo install...")
+              os.system("cargo install apkeep")
+          PYEOF
+
+          # Verify apkeep binary
+          apkeep --version || { echo "apkeep installation failed"; exit 1; }
 
           wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
@@ -84,11 +119,13 @@ jobs:
           if [ "${{ github.event.inputs.source_type }}" == "PlayStore" ]; then
             echo "Downloading from Play Store..."
             mkdir -p downloaded_apks
-            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
+            
+            # Download with error capture
+            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/ || true
             
             apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
             xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
-            apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
+            apk_count=$(find downloaded_apks -name "*.apk" | wc -l)
             
             if [ -n "$apks_file" ]; then
               java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
@@ -102,7 +139,7 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: No APK files found."
+              echo "::error::Play Store থেকে অ্যাপ নামানো যায়নি (GitHub Actions IP রেস্ট্রিকশন)। অ্যাপটি Google Drive-এ আপলোড করে লিঙ্ক দিন এবং GoogleDrive অপশন সিলেক্ট করুন।"
               exit 1
             fi
           else
@@ -143,15 +180,13 @@ jobs:
                       c = f.read()
                   orig = c
 
-                  # 1. slh.smali -> Force Intrinsics.areEqual to TRUE and bypass premium checks
+                  # 1. slh.smali -> Force Intrinsics.areEqual to TRUE ("Full" match)
                   if file == "slh.smali":
-                      # Force "Full" access level check result to true (1)
                       c = re.sub(
                           r'(invoke-static \{[^\}]+\}, Loa8;->e\(Ljava/lang/Object;Ljava/lang/Object;\)Z\s+move-result ([vp]\d+))',
                           r'\1\n    const/4 \2, 0x1',
                           c
                       )
-                      # Bypass exam/lesson locked condition
                       c = re.sub(
                           r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z)',
                           r'\1\n    const/4 \2, 0x1',
@@ -160,12 +195,11 @@ jobs:
 
                   # 2 & 3. er6.smali, zd6.smali -> Model parsers for access_level
                   elif file == "er6.smali":
-                      # v4 is access_level in pswitch_1ea (v25 is phase_id)
                       c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "Full"')
                   elif file == "zd6.smali":
                       c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "Full"', c, count=1)
 
-                  # 4 & 5. tq6.smali, sd6.smali -> Routine & Live Class Model Constructor
+                  # 4 & 5. tq6.smali, sd6.smali -> Model Constructors
                   elif file == "tq6.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Ltq6;->a:Ljava/lang/String;',
@@ -181,11 +215,11 @@ jobs:
 
                   # 6. n4.smali -> Academic Program Model
                   elif file == "n4.smali":
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c) # isExpired
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c) # isActive
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c) # isEnrolled
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c) # showTrial
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c) # hasAnimatedVideo
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
 
                   # 7 & 8. h7c.smali, u7c.smali -> Enrollment status models
