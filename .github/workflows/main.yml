@@ -149,7 +149,7 @@ jobs:
           target_files = [
               "slh.smali", "er6.smali", "zd6.smali", "tq6.smali", "sd6.smali",
               "n4.smali", "h7c.smali", "u7c.smali", "h30.smali", "b46.smali",
-              "d43.smali", "lu5.smali", "d8c.smali", "m7c.smali"
+              "d43.smali", "lu5.smali", "d8c.smali", "m7c.smali", "t36.smali", "zt5.smali"
           ]
 
           for root, dirs, files in os.walk("decompiled_app"):
@@ -196,50 +196,37 @@ jobs:
                           c
                       )
 
-                  # 6. n4.smali -> Academic Program Model (Disables Trial, Enables Full Enrollment)
+                  # 6. n4.smali -> Academic Program Model
                   elif file == "n4.smali":
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c) # isExpired = false
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z', c) # isFree = false
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c) # isActive = true
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->u:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->u:Z', c) # trialEnabled = false (Fixes "ফ্রিতে শেখা শেষ")
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c) # showTrial = false
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c) # isEnrolled = true (Enables "ভর্তি হয়েছো")
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c) # hasAnimatedVideo = true
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Ln4;->g:Ljava/lang/Boolean;', c) # isEnroledable = false
 
-                  # 7. h7c.smali -> Quarter Model (Forces enrolled=true, trial=false, purchasable=false)
+                  # 7. h7c.smali -> Quarter Model (NEW: FULLY FIXED)
                   elif file == "h7c.smali":
-                      c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
-                          c
-                      )
-                      c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;',
-                          c
-                      )
-                      c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->n:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->n:Ljava/lang/Boolean;',
-                          c
-                      )
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->h:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->h:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->i:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->i:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->n:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->n:Ljava/lang/Boolean;', c)
 
-                  # 8. u7c.smali -> Quarter Pricing Model (Forces enrolled=true, purchasable=false)
+                  # 8. u7c.smali -> Quarter Pricing Model (NEW: FULLY FIXED)
                   elif file == "u7c.smali":
-                      c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
-                          c
-                      )
-                      c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;',
-                          c
-                      )
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->b:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->b:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->c:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->c:Ljava/lang/Boolean;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;', c)
 
-                  # 9. h30.smali -> AppPreference (Access level "Full")
+                  # 9. t36.smali, zt5.smali -> Active Subscription Models (NEW)
+                  elif file == "t36.smali":
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lt36;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lt36;->f:Ljava/lang/Boolean;', c)
+                  elif file == "zt5.smali":
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Lzt5;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lzt5;->f:Ljava/lang/Boolean;', c)
+
+                  # 10. h30.smali -> AppPreference (Access level "Full")
                   elif file == "h30.smali":
                       c = re.sub(
                           r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
@@ -254,13 +241,13 @@ jobs:
                           flags=re.DOTALL
                       )
 
-                  # 10 & 12. b46.smali, lu5.smali -> Active Subscription Deserializers
+                  # 11 & 12. b46.smali, lu5.smali -> Active Subscription Deserializers
                   elif file == "b46.smali":
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                   elif file == "lu5.smali":
                       c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
 
-                  # 11. d43.smali -> Lesson Click Access Level
+                  # 13. d43.smali -> Lesson Click Access Level
                   elif file == "d43.smali":
                       c = re.sub(
                           r'invoke-virtual \{([vp]\d+), ([vp]\d+)\}, Lh30;->C\(Ljava/lang/String;\)V',
@@ -268,7 +255,7 @@ jobs:
                           c
                       )
 
-                  # 13 & 14. d8c.smali, m7c.smali -> Deserializers (Forces enrolled=true, purchasable=false)
+                  # 14 & 15. d8c.smali, m7c.smali -> Course Enrollment Parsers
                   elif file == "d8c.smali":
                       c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v4, Ljava/lang/Boolean;', 'sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
