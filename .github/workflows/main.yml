@@ -12,7 +12,7 @@ on:
           - 'PlayStore'
         default: 'GoogleDrive'
       app_identifier:
-        description: 'Google Drive Link অথবা Play Store Package Name'
+        description: 'Google Drive Link অথবা Play Store Link / Package Name'
         required: true
         type: string
         default: 'tech.shikho.android'
@@ -135,13 +135,22 @@ jobs:
 
       - name: Download & Merge APK
         run: |
+          RAW_INPUT="${{ github.event.inputs.app_identifier }}"
+          
           if [ "${{ github.event.inputs.source_type }}" == "PlayStore" ]; then
             echo "Installing apkeep..."
             cargo install apkeep
             
-            echo "Downloading from Play Store..."
+            # Extract package name if full URL was provided
+            if [[ "$RAW_INPUT" =~ id=([a-zA-Z0-9._]+) ]]; then
+              PKG_NAME="${BASH_REMATCH[1]}"
+            else
+              PKG_NAME=$(echo "$RAW_INPUT" | sed -e 's/[[:space:]]//g')
+            fi
+            
+            echo "Downloading package [$PKG_NAME] from Play Store..."
             mkdir -p downloaded_apks
-            apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
+            apkeep -a "$PKG_NAME" downloaded_apks/
             
             apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
             xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
@@ -159,7 +168,7 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: Play Store থেকে কোনো APK ফাইল পাওয়া যায়নি।"
+              echo "Error: Play Store থেকে APK নামানো যায়নি। গুগল ড্রাইভে APK আপলোড করে ড্রাইভ লিঙ্ক ব্যবহার করুন।"
               exit 1
             fi
           else
@@ -180,7 +189,7 @@ jobs:
               gdown.download(url=raw_input, output=output, quiet=False)
 
           if not os.path.exists(output) or os.path.getsize(output) == 0:
-              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। শেয়ার পারমিশন নিশ্চিত করুন।")
+              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। লিঙ্ক পারমিশন 'Anyone with the link' নিশ্চিত করুন।")
               sys.exit(1)
           PYEOF
 
@@ -235,13 +244,13 @@ jobs:
                       c = re.sub(r'if-eqz ([vp]\d+), :cond_23d', r'# bypassed if-eqz \1, :cond_23d', c)
                       c = re.sub(r'if-eqz ([vp]\d+), :cond_2ac', r'# bypassed if-eqz \1, :cond_2ac', c)
 
-                  # 2 & 3. er6.smali, zd6.smali -> Routine & Class Model Access Level
+                  # 2 & 3. er6.smali, zd6.smali -> Access Level
                   elif file == "er6.smali":
                       c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "Full"')
                   elif file == "zd6.smali":
                       c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "Full"', c, count=1)
 
-                  # 4 & 5. tq6.smali, sd6.smali -> Routine & Live Class Model Constructors
+                  # 4 & 5. tq6.smali, sd6.smali -> Constructors
                   elif file == "tq6.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Ltq6;->a:Ljava/lang/String;',
@@ -255,7 +264,7 @@ jobs:
                           c
                       )
 
-                  # 6. n4.smali -> Academic Program Model (Home screen & Course Switch unlock)
+                  # 6. n4.smali -> Academic Program Model
                   elif file == "n4.smali":
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z', c)
@@ -267,7 +276,7 @@ jobs:
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Ln4;->g:Ljava/lang/Boolean;', c)
 
-                  # 7. h7c.smali -> Quarter Model (Quarter status unlock)
+                  # 7. h7c.smali -> Quarter Model
                   elif file == "h7c.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
@@ -674,7 +683,7 @@ jobs:
               print(f"Icon update error: {e}")
           EOF
 
-      - name: Inject Secure Obfuscated Welcome Dialog (Crash-Free Architecture)
+      - name: Inject Safe Welcome Dialog (Zero-Freeze & Anti-Reverse)
         if: ${{ github.event.inputs.add_welcome_dialog == 'true' }}
         run: |
           echo "Injecting Anti-Reverse Welcome Dialog..."
@@ -705,7 +714,6 @@ jobs:
           target_smali_root = smali_dirs[-1]
           helper_dir = os.path.join("decompiled_app", target_smali_root, "com", "mod", "helper")
           os.makedirs(helper_dir, exist_ok=True)
-          print(f"Helper classes placement: {helper_dir}")
 
           def b64(s):
               return base64.b64encode(s.encode("utf-8")).decode("ascii")
@@ -733,6 +741,7 @@ jobs:
           b64_pref_name = b64("mod_dialog_pref")
           b64_pref_key = b64("agreed_disclaimer")
 
+          # WelcomeDialog using framework Theme_DeviceDefault_Dialog_Alert (0x01030226) which NEVER crashes on Splash
           welcome_smali = f""".class public Lcom/mod/helper/WelcomeDialog;
           .super Ljava/lang/Object;
 
@@ -755,92 +764,98 @@ jobs:
               return-object v0
           .end method
 
-          .method public static show(Landroid/app/Activity;)V
+          .method public static checkAndShow(Landroid/app/Activity;)Z
               .registers 6
 
+              const/4 v0, 0x1
               :try_start_0
-              if-nez p0, :cond_exit
+              if-nez p0, :cond_0
+              return v0
 
+              :cond_0
               invoke-virtual {{p0}}, Landroid/app/Activity;->isFinishing()Z
-              move-result v0
-              if-eqz v0, :cond_check
-              return-void
+              move-result v1
+              if-eqz v1, :cond_1
+              return v0
 
-              :cond_check
-              const-string v0, "{b64_pref_name}"
-              invoke-static {{v0}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v0
+              :cond_1
+              const-string v1, "{b64_pref_name}"
+              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v1
 
-              const/4 v1, 0x0
-              invoke-virtual {{p0, v0, v1}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
-              move-result-object v0
+              const/4 v2, 0x0
+              invoke-virtual {{p0, v1, v2}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+              move-result-object v1
 
-              const-string v2, "{b64_pref_key}"
+              const-string v3, "{b64_pref_key}"
+              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v3
+
+              invoke-interface {{v1, v3, v2}}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
+              move-result v3
+
+              if-eqz v3, :cond_2
+              return v0
+
+              :cond_2
+              new-instance v3, Landroid/app/AlertDialog$Builder;
+              const v4, 0x1030226
+              invoke-direct {{v3, p0, v4}}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;I)V
+
+              const-string v4, "{b64_title}"
+              invoke-static {{v4}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v4
+              invoke-virtual {{v3, v4}}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
+
+              const-string v4, "{b64_msg}"
+              invoke-static {{v4}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v4
+              invoke-virtual {{v3, v4}}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
+
+              invoke-virtual {{v3, v2}}, Landroid/app/AlertDialog$Builder;->setCancelable(Z)Landroid/app/AlertDialog$Builder;
+
+              const-string v2, "{b64_btn_agree}"
               invoke-static {{v2}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
               move-result-object v2
+              new-instance v4, Lcom/mod/helper/WelcomeDialog$1;
+              invoke-direct {{v4, v1, p0}}, Lcom/mod/helper/WelcomeDialog$1;-><init>(Landroid/content/SharedPreferences;Landroid/app/Activity;)V
+              invoke-virtual {{v3, v2, v4}}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
 
-              invoke-interface {{v0, v2, v1}}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
+              const-string v1, "{b64_btn_exit}"
+              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v1
+              new-instance v2, Lcom/mod/helper/WelcomeDialog$2;
+              invoke-direct {{v2, p0}}, Lcom/mod/helper/WelcomeDialog$2;-><init>(Landroid/app/Activity;)V
+              invoke-virtual {{v3, v1, v2}}, Landroid/app/AlertDialog$Builder;->setNegativeButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
+
+              const-string v1, "{b64_tg_url}"
+              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v1
+
+              invoke-virtual {{v1}}, Ljava/lang/String;->isEmpty()Z
               move-result v2
+              if-nez v2, :cond_3
 
-              if-eqz v2, :cond_show
-              return-void
+              const-string v2, "{b64_btn_tg}"
+              invoke-static {{v2}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v2
+              new-instance v4, Lcom/mod/helper/WelcomeDialog$3;
+              invoke-direct {{v4, p0, v1}}, Lcom/mod/helper/WelcomeDialog$3;-><init>(Landroid/app/Activity;Ljava/lang/String;)V
+              invoke-virtual {{v3, v2, v4}}, Landroid/app/AlertDialog$Builder;->setNeutralButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
 
-              :cond_show
-              new-instance v2, Landroid/app/AlertDialog$Builder;
-              invoke-direct {{v2, p0}}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;)V
+              :cond_3
+              invoke-virtual {{v3}}, Landroid/app/AlertDialog$Builder;->create()Landroid/app/AlertDialog;
+              move-result-object p0
+              invoke-virtual {{p0}}, Landroid/app/Dialog;->show()V
 
-              const-string v3, "{b64_title}"
-              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v3
-              invoke-virtual {{v2, v3}}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
-
-              const-string v3, "{b64_msg}"
-              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v3
-              invoke-virtual {{v2, v3}}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
-
-              invoke-virtual {{v2, v1}}, Landroid/app/AlertDialog$Builder;->setCancelable(Z)Landroid/app/AlertDialog$Builder;
-
-              const-string v1, "{b64_btn_agree}"
-              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v1
-              new-instance v3, Lcom/mod/helper/WelcomeDialog$1;
-              invoke-direct {{v3, v0, p0}}, Lcom/mod/helper/WelcomeDialog$1;-><init>(Landroid/content/SharedPreferences;Landroid/app/Activity;)V
-              invoke-virtual {{v2, v1, v3}}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
-
-              const-string v0, "{b64_btn_exit}"
-              invoke-static {{v0}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v0
-              new-instance v1, Lcom/mod/helper/WelcomeDialog$2;
-              invoke-direct {{v1, p0}}, Lcom/mod/helper/WelcomeDialog$2;-><init>(Landroid/app/Activity;)V
-              invoke-virtual {{v2, v0, v1}}, Landroid/app/AlertDialog$Builder;->setNegativeButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
-
-              const-string v0, "{b64_tg_url}"
-              invoke-static {{v0}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v0
-
-              invoke-virtual {{v0}}, Ljava/lang/String;->isEmpty()Z
-              move-result v1
-              if-nez v1, :cond_build
-
-              const-string v1, "{b64_btn_tg}"
-              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v1
-              new-instance v3, Lcom/mod/helper/WelcomeDialog$3;
-              invoke-direct {{v3, p0, v0}}, Lcom/mod/helper/WelcomeDialog$3;-><init>(Landroid/app/Activity;Ljava/lang/String;)V
-              invoke-virtual {{v2, v1, v3}}, Landroid/app/AlertDialog$Builder;->setNeutralButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
-
-              :cond_build
-              invoke-virtual {{v2}}, Landroid/app/AlertDialog$Builder;->create()Landroid/app/AlertDialog;
-              move-result-object v0
-              invoke-virtual {{v0}}, Landroid/app/Dialog;->show()V
-
-              :cond_exit
+              const/4 p0, 0x0
+              return p0
               :try_end_0
               .catch Ljava/lang/Exception; {{:try_start_0 .. :try_end_0}} :catch_0
 
               :catch_0
-              return-void
+              # In case of any exception, return true (1) to NEVER freeze the app!
+              return v0
           .end method
           """
 
@@ -960,21 +975,14 @@ jobs:
                   splash_code = f.read()
 
               hook_splash = """
-              const-string v0, "mod_dialog_pref"
-              const/4 v1, 0x0
-              invoke-virtual {p0, v0, v1}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
-              move-result-object v0
-              const-string v1, "agreed_disclaimer"
-              const/4 v2, 0x0
-              invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
+              invoke-static {p0}, Lcom/mod/helper/WelcomeDialog;->checkAndShow(Landroid/app/Activity;)Z
               move-result v0
               if-nez v0, :cond_splash_proceed
-              invoke-static {p0}, Lcom/mod/helper/WelcomeDialog;->show(Landroid/app/Activity;)V
               return-void
               :cond_splash_proceed
               """
 
-              if "agreed_disclaimer" not in splash_code:
+              if "checkAndShow" not in splash_code:
                   splash_code = re.sub(
                       r'(invoke-super \{p0\}, L[^;]+;->onResume\(\)V)',
                       r'\1\n' + hook_splash,
@@ -983,16 +991,13 @@ jobs:
                   )
                   with open(target_splash, "w", encoding="utf-8") as f:
                       f.write(splash_code)
-                  print("Splash hook injected cleanly!")
+                  print("Splash hook injected cleanly with fail-safe guard!")
           EOF
 
       - name: Build & Sign Strategy (Original, Clone or Both)
         run: |
           mkdir -p output_unsigned output_signed
           TARGET="${{ github.event.inputs.build_target }}"
-          CLONE_MODE="${{ github.event.inputs.clone_config }}"
-          CLONE_PKG="${{ github.event.inputs.clone_package_name }}"
-          CLONE_NAME="${{ github.event.inputs.clone_app_name }}"
 
           # ১. অরিজিনাল অ্যাপের নাম পরিবর্তন
           if [ "${{ github.event.inputs.change_name }}" == "true" ]; then
@@ -1000,53 +1005,67 @@ jobs:
             find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ github.event.inputs.new_app_name }}<\/string>/g' {} +
           fi
 
-          # বিল্ড ফাংশন: অরিজিনাল
           build_original() {
             echo "--- Rebuilding Original Modded APK ---"
             java -jar apktool.jar b decompiled_app -o output_unsigned/modded_original.apk --use-aapt2
           }
 
-          # বিল্ড ফাংশন: হার্ডকোর ক্লোন
           apply_hardcore_clone() {
-            echo "--- Applying True Hardcore Clone Engine ---"
+            echo "--- Applying True Zero-Conflict Hardcore Clone Engine ---"
             python3 - << 'PYEOF'
           import os, re
+          import xml.etree.ElementTree as ET
 
           decompiled_dir = "decompiled_app"
           manifest_path = os.path.join(decompiled_dir, "AndroidManifest.xml")
+          
           with open(manifest_path, "r", encoding="utf-8") as f:
-              content = f.read()
+              m_str = f.read()
 
-          orig_pkg = re.search(r'package="([^"]+)"', content).group(1)
+          orig_pkg = re.search(r'package="([^"]+)"', m_str).group(1)
           clone_pkg = """${{ github.event.inputs.clone_package_name }}""".strip() or f"{orig_pkg}.clone"
           clone_name = """${{ github.event.inputs.clone_app_name }}""".strip() if """${{ github.event.inputs.clone_config }}""" == "Customized" else ""
 
           print(f"Original Package: {orig_pkg}")
-          print(f"Hardcore Clone Target Package: {clone_pkg}")
+          print(f"Applying Clone Package: {clone_pkg}")
 
-          # রুট প্যাকেজ পরিবর্তন
-          content = content.replace(f'package="{orig_pkg}"', f'package="{clone_pkg}"')
-          # পারমিশন এবং কাস্টম অ্যাকশন পরিবর্তন
-          content = content.replace(f'"{orig_pkg}.', f'"{clone_pkg}.')
-          content = content.replace(f'>{orig_pkg}.', f'>{clone_pkg}.')
+          # ধাপ ১: সব রিলেটিভ কম্পোনেন্ট ক্লাস নেম ফুল কোয়ালিফাইড ফর্মে লক করা যাতে ClassNotFoundException না ঘটে
+          def lock_components(m):
+              name = m.group(2)
+              if name.startswith('.'):
+                  return f'{m.group(1)}="{orig_pkg}{name}"'
+              elif '.' not in name:
+                  return f'{m.group(1)}="{orig_pkg}.{name}"'
+              return m.group(0)
 
-          # সব ContentProvider Authority সম্পূর্ণ আলাদা করা (Zero-Conflict)
+          m_str = re.sub(r'(android:name)="([^"]+)"', lock_components, m_str)
+
+          # ধাপ ২: শুধুমাত্র রুট প্যাকেজ পরিবর্তন করা (স্ম্যালি ক্লাসপাথ পরিবর্তন না করে)
+          m_str = re.sub(r'package="[^"]+"', f'package="{clone_pkg}"', m_str, count=1)
+
+          # ধাপ ৩: সমস্ত পারমিশন পরিবর্তন করা (যাতে ওএস কনফ্লিক্ট না ধরে)
+          m_str = re.sub(r'(<permission[^>]+android:name=")' + re.escape(orig_pkg), r'\1' + clone_pkg, m_str)
+          m_str = re.sub(r'(<uses-permission[^>]+android:name=")' + re.escape(orig_pkg), r'\1' + clone_pkg, m_str)
+
+          # ধাপ ৪: সমস্ত ContentProvider Authority ইউনিক করা (যাতে 'package conflicts' পুরোপুরি বন্ধ হয়)
           def fix_authorities(m):
               raw = m.group(1)
               parts = [p.strip() for p in raw.split(';') if p.strip()]
               new_parts = []
               for p in parts:
-                  if not p.startswith(clone_pkg):
+                  if orig_pkg in p:
+                      p = p.replace(orig_pkg, clone_pkg)
+                  elif not p.startswith(clone_pkg):
                       p = f"{clone_pkg}.{p}"
                   new_parts.append(p)
               return f'android:authorities="{";".join(new_parts)}"'
 
-          content = re.sub(r'android:authorities="([^"]+)"', fix_authorities, content)
+          m_str = re.sub(r'android:authorities="([^"]+)"', fix_authorities, m_str)
 
           with open(manifest_path, "w", encoding="utf-8") as f:
-              f.write(content)
+              f.write(m_str)
 
-          # apktool.yml আপডেট
+          # ধাপ ৫: apktool.yml আপডেট
           apktool_yml = os.path.join(decompiled_dir, "apktool.yml")
           if os.path.exists(apktool_yml):
               with open(apktool_yml, "r", encoding="utf-8") as f:
@@ -1056,7 +1075,7 @@ jobs:
               with open(apktool_yml, "w", encoding="utf-8") as f:
                   f.write(ay)
 
-          # স্ম্যালিতে হার্ডকোডেড অথরিটি স্ট্রিং পরিবর্তন
+          # ধাপ ৬: স্ম্যালিতে থাকা হার্ডকোডেড অথরিটি স্ট্রিং পরিবর্তন
           for root, dirs, files in os.walk(decompiled_dir):
               for file in files:
                   if file.endswith(".smali"):
@@ -1070,7 +1089,7 @@ jobs:
                           with open(sp, "w", encoding="utf-8") as sf:
                               sf.write(nsc)
 
-          # ক্লোনের কাস্টম নাম দেওয়া
+          # ধাপ ৭: ক্লোন অ্যাপের কাস্টম নাম দেওয়া
           if clone_name:
               for root, dirs, files in os.walk(os.path.join(decompiled_dir, "res")):
                   if os.path.basename(root).startswith("values") and "strings.xml" in files:
@@ -1082,7 +1101,7 @@ jobs:
                           sf.write(st)
               print(f"Clone App Name set to: {clone_name}")
 
-          print("-> Hardcore Clone applied successfully!")
+          print("-> Hardcore Clone applied successfully with zero package conflict!")
           PYEOF
 
             echo "--- Rebuilding Clone Modded APK ---"
