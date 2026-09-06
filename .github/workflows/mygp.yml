@@ -17,39 +17,44 @@ on:
         type: string
         default: 'com.portonics.mygp'
       bypass_ssl:
-        description: 'Reqable ট্রাফিকের জন্য SSL Pinning ও WebView বাইপাস করবেন?'
+        description: 'SSL Pinning ও WebView বাইপাস করবেন?'
         required: true
         type: boolean
         default: true
       bypass_secure:
-        description: 'স্ক্রিনশট/রেকর্ড রেস্ট্রিকশন ভাঙতে চান? (FLAG_SECURE)'
+        description: 'FLAG_SECURE (স্ক্রিনশট ব্লকিং) বাইপাস করবেন?'
         required: true
         type: boolean
         default: true
+      spoof_installer:
+        description: 'প্লে স্টোর ইনস্টলার ভেরিফিকেশন বাইপাস করবেন?'
+        required: true
+        type: boolean
+        default: true
+      clone_app:
+        description: 'ক্লোন করবেন? (লাইসেন্স এরর এড়াতে false রাখাই ভালো)'
+        required: true
+        type: boolean
+        default: false
       change_name:
         description: 'অ্যাপের নাম পরিবর্তন করবেন?'
         required: true
         type: boolean
         default: false
       new_app_name:
-        description: 'নতুন অ্যাপের নাম (যদি নাম পরিবর্তন করতে চান)'
+        description: 'নতুন নাম'
         required: false
         type: string
         default: 'Modded App'
       change_icon:
-        description: 'অ্যাপের লোগো পরিবর্তন করবেন?'
+        description: 'লোগো পরিবর্তন করবেন?'
         required: true
         type: boolean
         default: false
       icon_url:
-        description: 'নতুন লোগোর ডিরেক্ট লিংক (PNG ফরম্যাট)'
+        description: 'নতুন লোগোর ডিরেক্ট লিংক (PNG)'
         required: false
         type: string
-      clone_app:
-        description: 'ক্লোন অ্যাপ তৈরি করবেন? (আগেরটার পাশাপাশি চালাতে)'
-        required: true
-        type: boolean
-        default: false
 
 jobs:
   build_mod:
@@ -65,13 +70,12 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Tools (apkeep, apktool, etc.)
+      - name: Install Tools
         run: |
           sudo apt-get update && sudo apt-get install -y wget curl zip unzip xmlstarlet
           pip install gdown pillow
           cargo install apkeep
           
-          # Download APK modding tools
           wget -q -O APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar
           wget -q -O apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
           wget -q -O uber-apk-signer.jar https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
@@ -83,28 +87,23 @@ jobs:
             mkdir -p downloaded_apks
             apkeep -a "${{ github.event.inputs.app_identifier }}" downloaded_apks/
             
-            echo "Checking downloaded files..."
             apks_file=$(find downloaded_apks -type f -name "*.apks" | head -n 1)
             xapk_file=$(find downloaded_apks -type f -name "*.xapk" | head -n 1)
             apk_count=$(find downloaded_apks -type f -name "*.apk" | wc -l)
             
             if [ -n "$apks_file" ]; then
-              echo "APKS bundle detected. Merging..."
               java -jar APKEditor.jar m -i "$apks_file" -o universal.apk
             elif [ -n "$xapk_file" ]; then
-              echo "XAPK bundle detected. Merging..."
               java -jar APKEditor.jar m -i "$xapk_file" -o universal.apk
             elif [ "$apk_count" -gt "1" ]; then
-              echo "Multiple Split APKs detected ($apk_count). Zipping and merging..."
               cd downloaded_apks
               zip -q -r ../app.apks $(find . -name "*.apk")
               cd ..
               java -jar APKEditor.jar m -i app.apks -o universal.apk
             elif [ "$apk_count" -eq "1" ]; then
-              echo "Single APK detected."
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: No APK files found in downloaded_apks."
+              echo "Error: No APK found."
               exit 1
             fi
           else
@@ -118,14 +117,13 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Patch Network Security Config, OkHttp & WebView SSL Pinning
+      - name: Patch Network Security Config & SSL Pinning
         if: ${{ github.event.inputs.bypass_ssl == 'true' }}
         run: |
-          echo "Injecting Network Security Config and patching Smali Pinning..."
           python3 - << 'EOF'
           import os, re
 
-          # 1. Add network_security_config.xml
+          # 1. Network Security Config
           res_xml_dir = "decompiled_app/res/xml"
           os.makedirs(res_xml_dir, exist_ok=True)
           net_config_path = os.path.join(res_xml_dir, "network_security_config.xml")
@@ -138,18 +136,12 @@ jobs:
                       <certificates src="user" />
                   </trust-anchors>
               </base-config>
-              <debug-overrides>
-                  <trust-anchors>
-                      <certificates src="user" />
-                  </trust-anchors>
-              </debug-overrides>
           </network-security-config>"""
           
           with open(net_config_path, "w", encoding="utf-8") as f:
               f.write(config_content)
-          print("[+] network_security_config.xml created.")
 
-          # 2. Patch AndroidManifest.xml
+          # 2. Patch Manifest
           manifest_path = "decompiled_app/AndroidManifest.xml"
           if os.path.exists(manifest_path):
               with open(manifest_path, "r", encoding="utf-8") as f:
@@ -168,15 +160,10 @@ jobs:
                       manifest,
                       count=1
                   )
-              
               with open(manifest_path, "w", encoding="utf-8") as f:
                   f.write(manifest)
-              print("[+] AndroidManifest.xml patched with networkSecurityConfig.")
 
-          # 3. Patch Smali SSL Pinning & WebView
-          count_pinner = 0
-          count_webview = 0
-          
+          # 3. Patch Smali (OkHttp, TrustManager, WebView)
           for root, _, files in os.walk("decompiled_app"):
               for file in files:
                   if file.endswith(".smali"):
@@ -186,114 +173,120 @@ jobs:
                       
                       modified = False
 
-                      # OkHttp3 CertificatePinner check(...) bypass
+                      # OkHttp3 CertificatePinner
                       if "CertificatePinner" in file:
                           pinner_pat = r'(\.method\s+public(?:\s+final)?\s+check\(Ljava\/lang\/String;[^\)]+\)V)([\s\S]*?)(\.end method)'
                           if re.search(pinner_pat, content):
                               content = re.sub(pinner_pat, r'\1\n    .registers 3\n    return-void\n\3', content)
                               modified = True
-                              count_pinner += 1
-                      
-                      # Custom TrustManager checkServerTrusted bypass
+
+                      # TrustManager
                       if "TrustManager" in file or "X509" in file:
                           tm_pat = r'(\.method\s+public\s+checkServerTrusted\([^\)]+\)V)([\s\S]*?)(\.end method)'
                           if re.search(tm_pat, content):
                               content = re.sub(tm_pat, r'\1\n    .registers 4\n    return-void\n\3', content)
                               modified = True
-                              count_pinner += 1
 
-                      # WebViewClient onReceivedSslError bypass
+                      # WebView onReceivedSslError
                       if "onReceivedSslError" in content:
                           wv_pat = r'(\.method\s+public\s+onReceivedSslError\(Landroid\/webkit\/WebView;Landroid\/webkit\/SslErrorHandler;Landroid\/net\/http\/SslError;\)V)([\s\S]*?)(\.end method)'
                           if re.search(wv_pat, content):
                               content = re.sub(wv_pat, r'\1\n    .registers 4\n    invoke-virtual {p2}, Landroid/webkit/SslErrorHandler;->proceed()V\n    return-void\n\3', content)
                               modified = True
-                              count_webview += 1
 
                       if modified:
                           with open(fpath, "w", encoding="utf-8") as f:
                               f.write(content)
-
-          print(f"[+] Total {count_pinner} SSL Pinning instances patched.")
-          print(f"[+] Total {count_webview} WebView SSL handlers bypassed.")
           EOF
 
-      - name: Patch FLAG_SECURE (Screenshot/Record Enable)
+      - name: Patch Installer Verification (Get this app from Play fix)
+        if: ${{ github.event.inputs.spoof_installer == 'true' }}
+        run: |
+          echo "Patching getInstallerPackageName checks..."
+          python3 - << 'EOF'
+          import os, re
+
+          count = 0
+          for root, _, files in os.walk("decompiled_app"):
+              for file in files:
+                  if file.endswith(".smali"):
+                      fpath = os.path.join(root, file)
+                      with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+
+                      # getInstallerPackageName বা getInstallSourceInfo চেক থাকলে com.android.vending রিটার্ন করানো
+                      if "getInstallerPackageName" in content:
+                          pattern = r'invoke-virtual\s+\{[^}]+\},\s+Landroid/content/pm/PackageManager;->getInstallerPackageName\(Ljava/lang/String;\)Ljava/lang/String;\s+move-result-object\s+(\w+)'
+                          replacement = r'const-string \1, "com.android.vending"'
+                          new_content, n = re.subn(pattern, replacement, content)
+                          if n > 0:
+                              with open(fpath, "w", encoding="utf-8") as f:
+                                  f.write(new_content)
+                              count += n
+
+          print(f"[+] Spoofed {count} installer check instances to 'com.android.vending'")
+          EOF
+
+      - name: Patch FLAG_SECURE
         if: ${{ github.event.inputs.bypass_secure == 'true' }}
         run: |
-          echo "Bypassing FLAG_SECURE..."
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/invoke-virtual {.*}, Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
 
       - name: Change App Name
         if: ${{ github.event.inputs.change_name == 'true' }}
         run: |
-          echo "Changing App Name to ${{ github.event.inputs.new_app_name }}..."
           find decompiled_app/res/values* -type f -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ github.event.inputs.new_app_name }}<\/string>/g' {} +
 
-      - name: Clone App (Allow multiple installs)
+      - name: Clone App (Optional)
         if: ${{ github.event.inputs.clone_app == 'true' }}
         run: |
-          echo "Cloning App..."
           MANIFEST="decompiled_app/AndroidManifest.xml"
           ORIGINAL_PKG=$(grep -oP 'package="\K[^"]+' "$MANIFEST" | head -n 1)
           if [ -n "$ORIGINAL_PKG" ]; then
             NEW_PKG="${ORIGINAL_PKG}.clone"
             sed -i "s/package=\"$ORIGINAL_PKG\"/package=\"$NEW_PKG\"/g" "$MANIFEST"
             sed -i "s/android:authorities=\"/android:authorities=\"clone./g" "$MANIFEST"
-            echo "Package changed from $ORIGINAL_PKG to $NEW_PKG"
-          else
-            echo "Warning: Could not find original package name!"
           fi
 
       - name: Change App Icon
         if: ${{ github.event.inputs.change_icon == 'true' }}
         run: |
-          echo "Downloading and applying new Icon..."
           wget -q -O app_icon.png "${{ github.event.inputs.icon_url }}"
-          
           python3 - << 'EOF'
           import os
           from PIL import Image
           
           icon_src = "app_icon.png"
-          if not os.path.exists(icon_src):
-              print("Icon download failed or invalid URL.")
-              exit(0)
-              
-          for root, dirs, files in os.walk("decompiled_app/res"):
-              if "anydpi" in root:
-                  for f in files:
-                      if "ic_launcher" in f and f.endswith(".xml"):
-                          os.remove(os.path.join(root, f))
-                          
-          try:
-              orig = Image.open(icon_src).convert("RGBA")
-              sizes = {
-                  "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
-                  "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
-                  "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
-              }
-              
-              for folder, size in sizes.items():
-                  dir_path = os.path.join("decompiled_app/res", folder)
-                  if os.path.exists(dir_path):
-                      resized = orig.resize(size, Image.Resampling.LANCZOS)
-                      for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
-                          resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
-              print("Icon replaced successfully!")
-          except Exception as e:
-              print(f"Error processing image: {e}")
+          if os.path.exists(icon_src):
+              for root, dirs, files in os.walk("decompiled_app/res"):
+                  if "anydpi" in root:
+                      for f in files:
+                          if "ic_launcher" in f and f.endswith(".xml"):
+                              os.remove(os.path.join(root, f))
+              try:
+                  orig = Image.open(icon_src).convert("RGBA")
+                  sizes = {
+                      "mipmap-mdpi": (48, 48), "mipmap-hdpi": (72, 72),
+                      "mipmap-xhdpi": (96, 96), "mipmap-xxhdpi": (144, 144),
+                      "mipmap-xxxhdpi": (192, 192), "drawable": (192, 192)
+                  }
+                  for folder, size in sizes.items():
+                      dir_path = os.path.join("decompiled_app/res", folder)
+                      if os.path.exists(dir_path):
+                          resized = orig.resize(size, Image.Resampling.LANCZOS)
+                          for name in ["ic_launcher.png", "ic_launcher_round.png", "icon.png"]:
+                              resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
+              except Exception as e:
+                  print(f"Error processing image: {e}")
           EOF
 
       - name: Rebuild Optimized APK
         run: |
-          echo "Rebuilding APK..."
           java -jar apktool.jar b decompiled_app -o modded_unsigned.apk --use-aapt2
 
       - name: Sign Modded APK
         run: |
-          echo "Signing APK..."
           java -jar uber-apk-signer.jar -a modded_unsigned.apk -o output_signed/
 
       - name: Upload Final APK
