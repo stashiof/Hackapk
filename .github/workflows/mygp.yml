@@ -15,9 +15,9 @@ on:
         description: 'Play Store Package Name অথবা Google Drive Link'
         required: true
         type: string
-        default: 'tech.shikho.android'
+        default: 'com.portonics.mygp'
       bypass_ssl:
-        description: 'Reqable ট্রাফিক দেখার জন্য SSL Pinning বাইপাস করবেন?'
+        description: 'Reqable ট্রাফিকের জন্য SSL Pinning ও WebView বাইপাস করবেন?'
         required: true
         type: boolean
         default: true
@@ -118,7 +118,7 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      - name: Patch Network Security Config & SSL Pinning
+      - name: Patch Network Security Config, OkHttp & WebView SSL Pinning
         if: ${{ github.event.inputs.bypass_ssl == 'true' }}
         run: |
           echo "Injecting Network Security Config and patching Smali Pinning..."
@@ -173,8 +173,10 @@ jobs:
                   f.write(manifest)
               print("[+] AndroidManifest.xml patched with networkSecurityConfig.")
 
-          # 3. Patch Smali SSL Pinning (OkHttp3 & TrustManager)
-          count = 0
+          # 3. Patch Smali SSL Pinning & WebView
+          count_pinner = 0
+          count_webview = 0
+          
           for root, _, files in os.walk("decompiled_app"):
               for file in files:
                   if file.endswith(".smali"):
@@ -190,6 +192,7 @@ jobs:
                           if re.search(pinner_pat, content):
                               content = re.sub(pinner_pat, r'\1\n    .registers 3\n    return-void\n\3', content)
                               modified = True
+                              count_pinner += 1
                       
                       # Custom TrustManager checkServerTrusted bypass
                       if "TrustManager" in file or "X509" in file:
@@ -197,13 +200,22 @@ jobs:
                           if re.search(tm_pat, content):
                               content = re.sub(tm_pat, r'\1\n    .registers 4\n    return-void\n\3', content)
                               modified = True
+                              count_pinner += 1
+
+                      # WebViewClient onReceivedSslError bypass
+                      if "onReceivedSslError" in content:
+                          wv_pat = r'(\.method\s+public\s+onReceivedSslError\(Landroid\/webkit\/WebView;Landroid\/webkit\/SslErrorHandler;Landroid\/net\/http\/SslError;\)V)([\s\S]*?)(\.end method)'
+                          if re.search(wv_pat, content):
+                              content = re.sub(wv_pat, r'\1\n    .registers 4\n    invoke-virtual {p2}, Landroid/webkit/SslErrorHandler;->proceed()V\n    return-void\n\3', content)
+                              modified = True
+                              count_webview += 1
 
                       if modified:
                           with open(fpath, "w", encoding="utf-8") as f:
                               f.write(content)
-                          count += 1
 
-          print(f"[+] Total {count} smali pinning files patched.")
+          print(f"[+] Total {count_pinner} SSL Pinning instances patched.")
+          print(f"[+] Total {count_webview} WebView SSL handlers bypassed.")
           EOF
 
       - name: Patch FLAG_SECURE (Screenshot/Record Enable)
