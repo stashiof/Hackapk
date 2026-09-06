@@ -10,9 +10,9 @@ on:
         required: true
         type: choice
         options:
-          - 'PlayStore'
           - 'GoogleDrive'
-        default: 'PlayStore'
+          - 'PlayStore'
+        default: 'GoogleDrive'
       app_identifier:
         description: 'Google Drive Link অথবা Play Store Link / Package Name'
         required: true
@@ -136,7 +136,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ১. ক্যাশিং মেকানিজম (টুলস ও ডিপেনডেন্সি দ্রুত লোড করতে)
+      # ১. টুলস ক্যাশ
       - name: Cache Build Tools & Cargo
         id: cache-tools
         uses: actions/cache@v4
@@ -147,7 +147,7 @@ jobs:
             APKEditor.jar
             apktool.jar
             uber-apk-signer.jar
-          key: ${{ runner.os }}-modding-tools-v4
+          key: ${{ runner.os }}-modding-tools-v5
 
       - name: Install Dependencies & Tools
         run: |
@@ -166,10 +166,10 @@ jobs:
             sudo cp ~/.cargo/bin/apkeep /usr/local/bin/
           fi
 
-      # ৪. কাস্টম রিলিজ কীস্টোর জেনারেটর (Play Protect ওয়ার্নিং বাইপাস)
+      # ৪. কাস্টম রিলিজ কীস্টোর (Play Protect সেফ)
       - name: Setup Custom Release Keystore
         run: |
-          echo "Setting up Custom Permanent Signing Keystore..."
+          echo "Setting up Permanent Release Signing Keystore..."
           if [ -n "${{ secrets.CUSTOM_KEYSTORE_BASE64 }}" ]; then
             echo "Using custom Keystore from Secrets..."
             echo "${{ secrets.CUSTOM_KEYSTORE_BASE64 }}" | base64 -d > release.jks
@@ -220,7 +220,7 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: Play Store থেকে APK নামানো যায়নি। গুগল ড্রাইভ ব্যাকআপ ব্যবহার করুন।"
+              echo "Error: Play Store থেকে APK নামানো যায়নি। গুগল ড্রাইভে আপলোড করে ড্রাইভ অপশন ব্যবহার করুন।"
               exit 1
             fi
           else
@@ -256,11 +256,11 @@ jobs:
           echo "Decompiling APK..."
           java -jar apktool.jar d universal.apk -o decompiled_app -f
 
-      # ২. সিগনেচার-ভিত্তিক ডাইনামিক প্যাচিং (Update-Proof Smali Engine)
-      - name: Premium Features Unlock (Smart Dynamic Smali Patcher)
+      # মূল ১৫টি টার্গেট ফাইলের নিখুঁত স্ম্যালি প্যাচিং (রুটিন, লাইভ, রেকর্ড ক্লাস ১০০% অক্ষুণ্ণ)
+      - name: Premium Features Unlock (Original Stable Precision Patch)
         if: ${{ github.event.inputs.unlock_premium == 'true' || github.event_name == 'schedule' }}
         run: |
-          echo "Running Adaptive Smali Patcher..."
+          echo "Applying Verified Smali Patches..."
           python3 - << 'EOF'
           import os, re
 
@@ -272,63 +272,93 @@ jobs:
 
           for root, dirs, files in os.walk("decompiled_app"):
               for file in files:
-                  if not file.endswith(".smali"):
+                  if file not in target_files: 
                       continue
-                  
                   filepath = os.path.join(root, file)
                   with open(filepath, "r", encoding="utf-8") as f:
                       c = f.read()
                   orig = c
 
-                  # (A) লাইভ / রেকর্ড রাউটিং ডাইনামিক ডিটেকশন
-                  if "->o0:Z" in c and "0x7f0a0387" in c:
+                  # 1. slh.smali -> Routing Logic (Live, Recorded & Upcoming verified working)
+                  if file == "slh.smali":
                       c = re.sub(
-                          r'(iget-boolean ([vp]\d+), ([vp]\d+), L[^;]+;->o0:Z\s+if-eqz \2, (:cond_\w+))\s+(:cond_\w+)',
+                          r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z\s+if-eqz \2, (:cond_\w+))\s+(:cond_\w+)',
                           r'\1\n    return-void\n\n    \5',
                           c
                       )
                       c = re.sub(
-                          r'(iget-boolean ([vp]\d+), ([vp]\d+), L[^;]+;->o0:Z\s+if-eqz \2, :cond_\w+\s+)goto :goto_\w+',
+                          r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z\s+if-eqz \2, :cond_\w+\s+)goto :goto_\w+',
                           r'\1goto :cond_2af',
                           c
                       )
                       c = re.sub(r'if-eqz ([vp]\d+), :cond_23d', r'# bypassed if-eqz \1, :cond_23d', c)
                       c = re.sub(r'if-eqz ([vp]\d+), :cond_2ac', r'# bypassed if-eqz \1, :cond_2ac', c)
 
-                  # (B) মডেল পার্সারে অ্যাক্সেস লেভেল bypass
-                  if "access_level" in c and "check-cast" in c:
-                      c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "Full"', c)
+                  # 2 & 3. er6.smali, zd6.smali -> Routine & Class Model Access Level
+                  elif file == "er6.smali":
+                      c = c.replace('check-cast v4, Ljava/lang/String;', 'const-string v4, "Full"')
+                  elif file == "zd6.smali":
+                      c = re.sub(r'check-cast ([vp]\d+), Ljava/lang/String;', r'const-string \1, "Full"', c, count=1)
 
-                  # (C) কনস্ট্রাক্টরে অ্যাক্সেস লেভেল সেট
-                  if "->a:Ljava/lang/String;" in c and "Full" not in c and ("sd6" in file or "tq6" in file):
+                  # 4 & 5. tq6.smali, sd6.smali -> Routine & Live Class Model Constructors
+                  elif file == "tq6.smali":
                       c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->a:Ljava/lang/String;)',
-                          r'const-string \1, "Full"\n    iput-object \1, \2, \3',
+                          r'iput-object ([vp]\d+), ([vp]\d+), Ltq6;->a:Ljava/lang/String;',
+                          r'const-string \1, "Full"\n    iput-object \1, \2, Ltq6;->a:Ljava/lang/String;',
+                          c
+                      )
+                  elif file == "sd6.smali":
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lsd6;->a:Ljava/lang/String;',
+                          r'const-string \1, "Full"\n    iput-object \1, \2, Lsd6;->a:Ljava/lang/String;',
                           c
                       )
 
-                  # (D) একাডেমিক প্রোগ্রাম মডেল
-                  if "hasAnimatedVideo" in c or file == "n4.smali":
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->l:Z)', r'const/4 \1, 0x0\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->m:Z)', r'const/4 \1, 0x0\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->t:Z)', r'const/4 \1, 0x1\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->u:Z)', r'const/4 \1, 0x0\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->v:Z)', r'const/4 \1, 0x0\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->w:Z)', r'const/4 \1, 0x1\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), (L[^;]+;->p:Z)', r'const/4 \1, 0x1\n    iput-boolean \1, \2, \3', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->h:Ljava/lang/String;)', r'const-string \1, "Full"\n    iput-object \1, \2, \3', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->g:Ljava/lang/Boolean;)', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, \3', c)
+                  # 6. n4.smali -> Academic Program Model (Home screen & Course Switch unlock)
+                  elif file == "n4.smali":
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->u:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->u:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->v:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
+                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Ln4;->g:Ljava/lang/Boolean;', c)
 
-                  # (E) কোয়ার্টার ও প্রাইসিং মডেল
-                  if "has_free_trial_enrolment" in c or file in ["h7c.smali", "u7c.smali"]:
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->f:Ljava/lang/Boolean;)', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, \3', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->g:Ljava/lang/Boolean;)', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, \3', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->n:Ljava/lang/Boolean;)', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, \3', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->a:Ljava/lang/Boolean;)', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, \3', c)
-                      c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), (L[^;]+;->d:Ljava/lang/Boolean;)', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, \3', c)
+                  # 7. h7c.smali -> Quarter Model (Quarter status unlock)
+                  elif file == "h7c.smali":
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->n:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->n:Ljava/lang/Boolean;',
+                          c
+                      )
 
-                  # (F) লোকাল পারসিস্টেন্স / AppPreference bypass
-                  if "SHOW_TOOLTIP" in c or file == "h30.smali":
+                  # 8. u7c.smali -> Quarter Pricing Model
+                  elif file == "u7c.smali":
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
+                          c
+                      )
+                      c = re.sub(
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->d:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->d:Ljava/lang/Boolean;',
+                          c
+                      )
+
+                  # 9. h30.smali -> AppPreference (Access level "Full")
+                  elif file == "h30.smali":
                       c = re.sub(
                           r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
                           '.method public final d()Ljava/lang/String;\n    .registers 2\n    const-string v0, "Full"\n    return-object v0\n.end method',
@@ -342,16 +372,31 @@ jobs:
                           flags=re.DOTALL
                       )
 
-                  # (G) এনরোলমেন্ট ডিসিরিয়ালাইজার
-                  if "has_enrolment" in c:
+                  # 10 & 12. b46.smali, lu5.smali -> Active Subscription Deserializers
+                  elif file == "b46.smali":
+                      c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                  elif file == "lu5.smali":
+                      c = c.replace('check-cast v6, Ljava/lang/Boolean;', 'sget-object v6, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+
+                  # 11. d43.smali -> Lesson Click Access Level
+                  elif file == "d43.smali":
+                      c = re.sub(
+                          r'invoke-virtual \{([vp]\d+), ([vp]\d+)\}, Lh30;->C\(Ljava/lang/String;\)V',
+                          r'const-string \2, "Full"\n    invoke-virtual {\1, \2}, Lh30;->C(Ljava/lang/String;)V',
+                          c
+                      )
+
+                  # 13 & 14. d8c.smali, m7c.smali -> Course Enrollment Parsers
+                  elif file == "d8c.smali":
                       c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v4, Ljava/lang/Boolean;', 'sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
+                  elif file == "m7c.smali":
                       c = c.replace('check-cast v9, Ljava/lang/Boolean;', 'sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v10, Ljava/lang/Boolean;', 'sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v17, Ljava/lang/Boolean;', 'sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
 
-                  # (H) প্রোফাইলের কোয়ার্টার স্ট্যাটাস কার্ড ভিউ
-                  if "0x7f1403d0" in c or file in ["ejc.smali", "Lejc.smali"]:
+                  # 15. ejc.smali -> Profile Quarter Card View Holder
+                  elif file in ["ejc.smali", "Lejc.smali"]:
                       c = c.replace('const v6, 0x7f1403d0', 'const v6, 0x7f140047')
                       c = c.replace('const v8, 0x7f0600fd', 'const v8, 0x7f0604fd')
                       c = c.replace('const v6, 0x7f0604dd', 'const v6, 0x7f060547')
@@ -360,7 +405,7 @@ jobs:
                   if c != orig:
                       with open(filepath, "w", encoding="utf-8") as f:
                           f.write(c)
-                      print(f"-> Adaptive Patcher Updated: {file}")
+                      print(f"-> Safely Patched: {file}")
           EOF
 
       - name: Patch FLAG_SECURE
@@ -655,10 +700,11 @@ jobs:
                           resized.save(os.path.join(dir_path, name), format="PNG", optimize=True)
           EOF
 
-      - name: Inject Welcome Dialog (Zero-Freeze & Anti-Reverse)
+      # স্প্ল্যাশ স্ক্রিন কখনোই ফ্রিজ হবে না; সরাসরি HomeActivity-তে ডায়ালগ পপ-আপ হবে
+      - name: Inject Safe Welcome Dialog (Zero-Freeze & Home Hook)
         if: ${{ github.event.inputs.add_welcome_dialog == 'true' || github.event_name == 'schedule' }}
         run: |
-          echo "Injecting Anti-Reverse Welcome Dialog..."
+          echo "Injecting Anti-Reverse Welcome Dialog to Home Screen..."
           python3 - << 'EOF'
           import os, re, base64
           import xml.etree.ElementTree as ET
@@ -731,97 +777,93 @@ jobs:
               return-object v0
           .end method
 
-          .method public static checkAndShow(Landroid/app/Activity;)Z
+          .method public static show(Landroid/app/Activity;)V
               .registers 6
 
-              const/4 v0, 0x1
               :try_start_0
               if-nez p0, :cond_0
-              return v0
+              return-void
 
               :cond_0
               invoke-virtual {{p0}}, Landroid/app/Activity;->isFinishing()Z
-              move-result v1
-              if-eqz v1, :cond_1
-              return v0
+              move-result v0
+              if-eqz v0, :cond_1
+              return-void
 
               :cond_1
-              const-string v1, "{b64_pref_name}"
-              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v1
+              const-string v0, "{b64_pref_name}"
+              invoke-static {{v0}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v0
 
-              const/4 v2, 0x0
-              invoke-virtual {{p0, v1, v2}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
-              move-result-object v1
+              const/4 v1, 0x0
+              invoke-virtual {{p0, v0, v1}}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+              move-result-object v0
 
-              const-string v3, "{b64_pref_key}"
-              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v3
-
-              invoke-interface {{v1, v3, v2}}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
-              move-result v3
-
-              if-eqz v3, :cond_2
-              return v0
-
-              :cond_2
-              new-instance v3, Landroid/app/AlertDialog$Builder;
-              const v4, 0x1030226
-              invoke-direct {{v3, p0, v4}}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;I)V
-
-              const-string v4, "{b64_title}"
-              invoke-static {{v4}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v4
-              invoke-virtual {{v3, v4}}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
-
-              const-string v4, "{b64_msg}"
-              invoke-static {{v4}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v4
-              invoke-virtual {{v3, v4}}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
-
-              invoke-virtual {{v3, v2}}, Landroid/app/AlertDialog$Builder;->setCancelable(Z)Landroid/app/AlertDialog$Builder;
-
-              const-string v2, "{b64_btn_agree}"
+              const-string v2, "{b64_pref_key}"
               invoke-static {{v2}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
               move-result-object v2
-              new-instance v4, Lcom/mod/helper/WelcomeDialog$1;
-              invoke-direct {{v4, v1, p0}}, Lcom/mod/helper/WelcomeDialog$1;-><init>(Landroid/content/SharedPreferences;Landroid/app/Activity;)V
-              invoke-virtual {{v3, v2, v4}}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
+
+              invoke-interface {{v0, v2, v1}}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
+              move-result v2
+
+              if-eqz v2, :cond_2
+              return-void
+
+              :cond_2
+              new-instance v2, Landroid/app/AlertDialog$Builder;
+              const v3, 0x1030226
+              invoke-direct {{v2, p0, v3}}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;I)V
+
+              const-string v3, "{b64_title}"
+              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v3
+              invoke-virtual {{v2, v3}}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
+
+              const-string v3, "{b64_msg}"
+              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v3
+              invoke-virtual {{v2, v3}}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
+
+              invoke-virtual {{v2, v1}}, Landroid/app/AlertDialog$Builder;->setCancelable(Z)Landroid/app/AlertDialog$Builder;
+
+              const-string v1, "{b64_btn_agree}"
+              invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v1
+              new-instance v3, Lcom/mod/helper/WelcomeDialog$1;
+              invoke-direct {{v3, v0, p0}}, Lcom/mod/helper/WelcomeDialog$1;-><init>(Landroid/content/SharedPreferences;Landroid/app/Activity;)V
+              invoke-virtual {{v2, v1, v3}}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
 
               const-string v1, "{b64_btn_exit}"
               invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
               move-result-object v1
-              new-instance v2, Lcom/mod/helper/WelcomeDialog$2;
-              invoke-direct {{v2, p0}}, Lcom/mod/helper/WelcomeDialog$2;-><init>(Landroid/app/Activity;)V
-              invoke-virtual {{v3, v1, v2}}, Landroid/app/AlertDialog$Builder;->setNegativeButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
+              new-instance v3, Lcom/mod/helper/WelcomeDialog$2;
+              invoke-direct {{v3, p0}}, Lcom/mod/helper/WelcomeDialog$2;-><init>(Landroid/app/Activity;)V
+              invoke-virtual {{v2, v1, v3}}, Landroid/app/AlertDialog$Builder;->setNegativeButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
 
               const-string v1, "{b64_tg_url}"
               invoke-static {{v1}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
               move-result-object v1
 
               invoke-virtual {{v1}}, Ljava/lang/String;->isEmpty()Z
-              move-result v2
-              if-nez v2, :cond_3
+              move-result v3
+              if-nez v3, :cond_3
 
-              const-string v2, "{b64_btn_tg}"
-              invoke-static {{v2}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
-              move-result-object v2
+              const-string v3, "{b64_btn_tg}"
+              invoke-static {{v3}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
+              move-result-object v3
               new-instance v4, Lcom/mod/helper/WelcomeDialog$3;
               invoke-direct {{v4, p0, v1}}, Lcom/mod/helper/WelcomeDialog$3;-><init>(Landroid/app/Activity;Ljava/lang/String;)V
-              invoke-virtual {{v3, v2, v4}}, Landroid/app/AlertDialog$Builder;->setNeutralButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
+              invoke-virtual {{v2, v3, v4}}, Landroid/app/AlertDialog$Builder;->setNeutralButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
 
               :cond_3
-              invoke-virtual {{v3}}, Landroid/app/AlertDialog$Builder;->create()Landroid/app/AlertDialog;
+              invoke-virtual {{v2}}, Landroid/app/AlertDialog$Builder;->create()Landroid/app/AlertDialog;
               move-result-object p0
               invoke-virtual {{p0}}, Landroid/app/Dialog;->show()V
-
-              const/4 p0, 0x0
-              return p0
               :try_end_0
               .catch Ljava/lang/Exception; {{:try_start_0 .. :try_end_0}} :catch_0
 
               :catch_0
-              return v0
+              return-void
           .end method
           """
 
@@ -853,10 +895,6 @@ jobs:
               move-result-object p2
               invoke-interface {{p2}}, Landroid/content/SharedPreferences$Editor;->apply()V
               invoke-interface {{p1}}, Landroid/content/DialogInterface;->dismiss()V
-              iget-object p1, p0, Lcom/mod/helper/WelcomeDialog$1;->b:Landroid/app/Activity;
-              if-eqz p1, :cond_0
-              invoke-virtual {{p1}}, Landroid/app/Activity;->recreate()V
-              :cond_0
               return-void
           .end method
           """
@@ -930,34 +968,29 @@ jobs:
           with open(os.path.join(helper_dir, "WelcomeDialog$3.smali"), "w", encoding="utf-8") as f:
               f.write(dialog_3_smali)
 
-          # Splash Hook
-          target_splash = None
+          # HomeActivity-তে হুক ইনজেক্ট করা (স্প্ল্যাশ স্ক্রিন কখনো ফ্রিজ হবে না)
+          target_home = None
           for r, d, files in os.walk("decompiled_app"):
-              if "SplashActivity.smali" in files:
-                  target_splash = os.path.join(r, "SplashActivity.smali")
+              if "HomeActivity.smali" in files:
+                  target_home = os.path.join(r, "HomeActivity.smali")
                   break
 
-          if target_splash:
-              with open(target_splash, "r", encoding="utf-8") as f:
-                  splash_code = f.read()
+          if target_home:
+              with open(target_home, "r", encoding="utf-8") as f:
+                  h_code = f.read()
 
-              hook_splash = """
-              invoke-static {p0}, Lcom/mod/helper/WelcomeDialog;->checkAndShow(Landroid/app/Activity;)Z
-              move-result v0
-              if-nez v0, :cond_splash_proceed
-              return-void
-              :cond_splash_proceed
-              """
+              hook_home = "\n    invoke-static {p0}, Lcom/mod/helper/WelcomeDialog;->show(Landroid/app/Activity;)V\n"
 
-              if "checkAndShow" not in splash_code:
-                  splash_code = re.sub(
+              if "Lcom/mod/helper/WelcomeDialog;->show" not in h_code:
+                  h_code = re.sub(
                       r'(invoke-super \{p0\}, L[^;]+;->onResume\(\)V)',
-                      r'\1\n' + hook_splash,
-                      splash_code,
+                      r'\1' + hook_home,
+                      h_code,
                       count=1
                   )
-                  with open(target_splash, "w", encoding="utf-8") as f:
-                      f.write(splash_code)
+                  with open(target_home, "w", encoding="utf-8") as f:
+                      f.write(h_code)
+                  print(f"Hooked HomeActivity successfully at {target_home}")
           EOF
 
       # ৫. হার্ডকোর ক্লোনিং ইঞ্জিন (Zero Package Conflict & Component Lock)
@@ -994,6 +1027,7 @@ jobs:
           print(f"Original Package: {orig_pkg}")
           print(f"Hardcore Clone Target: {clone_pkg}")
 
+          # ক্লাসপাথ ঠিক রাখতে কম্পোনেন্ট নেইম ফুল-কোয়ালিফাইড করা
           def lock_components(m):
               name = m.group(2)
               if name.startswith('.'):
@@ -1007,6 +1041,7 @@ jobs:
           m_str = re.sub(r'(<permission[^>]+android:name=")' + re.escape(orig_pkg), r'\1' + clone_pkg, m_str)
           m_str = re.sub(r'(<uses-permission[^>]+android:name=")' + re.escape(orig_pkg), r'\1' + clone_pkg, m_str)
 
+          # সব ContentProvider Authority আলাদা করা (অরিজিনালের সাথে কনফ্লিক্ট বন্ধের মূল চাবিকাঠি)
           def fix_authorities(m):
               raw = m.group(1)
               parts = [p.strip() for p in raw.split(';') if p.strip()]
@@ -1089,7 +1124,7 @@ jobs:
 
       # ৩. সরাসরি টেলিগ্রাম চ্যানেলে ডেলিভারি (Robust Python Uploader)
       - name: Send APK Directly to Telegram Channel
-        if: ${{ github.event.inputs.send_to_telegram == 'true' || github.event_name == 'schedule' }}
+        if: ${{ (github.event.inputs.send_to_telegram == 'true' || github.event_name == 'schedule') }}
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
         run: |
