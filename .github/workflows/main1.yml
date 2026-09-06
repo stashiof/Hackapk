@@ -2,7 +2,7 @@ name: Ultimate App Modder Pro 🚀
 
 on:
   schedule:
-    - cron: '0 18 * * *' # প্রতিদিন রাত ১২টা (বাংলাদেশ সময়) স্বয়ংক্রিয়ভাবে আপডেট চেক ও বিল্ড হবে
+    - cron: '0 18 * * *' # প্রতিদিন রাত ১২টায় (বাংলাদেশ সময়) স্বয়ংক্রিয়ভাবে রান হবে
   workflow_dispatch:
     inputs:
       source_type:
@@ -135,7 +135,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       # ১. ক্যাশিং মেকানিজম (টুলস ও ডিপেনডেন্সি দ্রুত লোড করতে)
       - name: Cache Build Tools & Cargo
@@ -148,7 +147,7 @@ jobs:
             APKEditor.jar
             apktool.jar
             uber-apk-signer.jar
-          key: ${{ runner.os }}-modding-tools-v2
+          key: ${{ runner.os }}-modding-tools-v3
 
       - name: Install Dependencies & Tools
         run: |
@@ -265,7 +264,6 @@ jobs:
           python3 - << 'EOF'
           import os, re
 
-          # স্ট্যাটিক ফাইলের ব্যাকআপ তালিকা (পূর্ববর্তী সংস্করণের জন্য)
           target_files = [
               "slh.smali", "er6.smali", "zd6.smali", "tq6.smali", "sd6.smali",
               "n4.smali", "h7c.smali", "u7c.smali", "h30.smali", "b46.smali",
@@ -282,7 +280,7 @@ jobs:
                       c = f.read()
                   orig = c
 
-                  # (A) লাইভ / রেকর্ড রাউটিং ডাইনামিক ডিটেকশন (slh.smali ইত্যাদি)
+                  # (A) লাইভ / রেকর্ড রাউটিং ডাইনামিক ডিটেকশন
                   if "->o0:Z" in c and "0x7f0a0387" in c:
                       c = re.sub(
                           r'(iget-boolean ([vp]\d+), ([vp]\d+), L[^;]+;->o0:Z\s+if-eqz \2, (:cond_\w+))\s+(:cond_\w+)',
@@ -309,7 +307,7 @@ jobs:
                           c
                       )
 
-                  # (D) একাডেমিক প্রোগ্রাম মডেল (n4.smali সিগনেচার)
+                  # (D) একাডেমিক প্রোগ্রাম মডেল
                   if "hasAnimatedVideo" in c or file == "n4.smali":
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), L[^;]+;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, L\3;->l:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), L[^;]+;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, L\3;->m:Z', c)
@@ -321,7 +319,7 @@ jobs:
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L[^;]+;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, L\3;->h:Ljava/lang/String;', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L[^;]+;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, L\3;->g:Ljava/lang/Boolean;', c)
 
-                  # (E) কোয়ার্টার ও প্রাইসিং মডেল (h7c & u7c সিগনেচার)
+                  # (E) কোয়ার্টার ও প্রাইসিং মডেল
                   if "has_free_trial_enrolment" in c or file in ["h7c.smali", "u7c.smali"]:
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L[^;]+;->f:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, L\3;->f:Ljava/lang/Boolean;', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L[^;]+;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, L\3;->g:Ljava/lang/Boolean;', c)
@@ -329,7 +327,7 @@ jobs:
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L[^;]+;->a:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, L\3;->a:Ljava/lang/Boolean;', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), L[^;]+;->d:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, L\3;->d:Ljava/lang/Boolean;', c)
 
-                  # (F) লোকাল পারসিস্টেন্স / AppPreference bypass (h30.smali)
+                  # (F) লোকাল পারসিস্টেন্স / AppPreference bypass
                   if "SHOW_TOOLTIP" in c or file == "h30.smali":
                       c = re.sub(
                           r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
@@ -344,7 +342,7 @@ jobs:
                           flags=re.DOTALL
                       )
 
-                  # (G) এনরোলমেন্ট ডিসিরিয়ালাইজার (d8c, m7c ইত্যাদি)
+                  # (G) এনরোলমেন্ট ডিসিরিয়ালাইজার
                   if "has_enrolment" in c:
                       c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v4, Ljava/lang/Boolean;', 'sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
@@ -352,7 +350,7 @@ jobs:
                       c = c.replace('check-cast v10, Ljava/lang/Boolean;', 'sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v17, Ljava/lang/Boolean;', 'sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
 
-                  # (H) প্রোফাইলের কোয়ার্টার স্ট্যাটাস কার্ড ভিউ (ejc.smali)
+                  # (H) প্রোফাইলের কোয়ার্টার স্ট্যাটাস কার্ড ভিউ
                   if "0x7f1403d0" in c or file in ["ejc.smali", "Lejc.smali"]:
                       c = c.replace('const v6, 0x7f1403d0', 'const v6, 0x7f140047')
                       c = c.replace('const v8, 0x7f0600fd', 'const v8, 0x7f0604fd')
@@ -932,7 +930,6 @@ jobs:
           with open(os.path.join(helper_dir, "WelcomeDialog$3.smali"), "w", encoding="utf-8") as f:
               f.write(dialog_3_smali)
 
-          # Splash Hook
           target_splash = None
           for r, d, files in os.walk("decompiled_app"):
               if "SplashActivity.smali" in files:
@@ -996,7 +993,6 @@ jobs:
           print(f"Original Package: {orig_pkg}")
           print(f"Hardcore Clone Target: {clone_pkg}")
 
-          # ক্লাসপাথ ঠিক রাখতে কম্পোনেন্ট নেইম ফুল-কোয়ালিফাইড করা
           def lock_components(m):
               name = m.group(2)
               if name.startswith('.'):
@@ -1010,7 +1006,6 @@ jobs:
           m_str = re.sub(r'(<permission[^>]+android:name=")' + re.escape(orig_pkg), r'\1' + clone_pkg, m_str)
           m_str = re.sub(r'(<uses-permission[^>]+android:name=")' + re.escape(orig_pkg), r'\1' + clone_pkg, m_str)
 
-          # সব ContentProvider Authority আলাদা করা (অরিজিনালের সাথে কনফ্লিক্ট বন্ধের মূল চাবিকাঠি)
           def fix_authorities(m):
               raw = m.group(1)
               parts = [p.strip() for p in raw.split(';') if p.strip()]
@@ -1028,7 +1023,6 @@ jobs:
           with open(manifest_path, "w", encoding="utf-8") as f:
               f.write(m_str)
 
-          # apktool.yml আপডেট
           apktool_yml = os.path.join(decompiled_dir, "apktool.yml")
           if os.path.exists(apktool_yml):
               with open(apktool_yml, "r", encoding="utf-8") as f:
@@ -1038,7 +1032,6 @@ jobs:
               with open(apktool_yml, "w", encoding="utf-8") as f:
                   f.write(ay)
 
-          # স্ম্যালিতে হার্ডকোডেড অথরিটি স্ট্রিং পরিবর্তন
           for root, dirs, files in os.walk(decompiled_dir):
               for file in files:
                   if file.endswith(".smali"):
@@ -1077,7 +1070,6 @@ jobs:
             apply_hardcore_clone
           fi
 
-      # পার্মানেন্ট কাস্টম কীস্টোর দিয়ে সাইন (Play Protect Safe)
       - name: Sign Modded APKs with Release Key
         run: |
           echo "Signing generated APKs with Production Keystore..."
@@ -1093,12 +1085,17 @@ jobs:
             fi
           done
 
-      # ৩. সরাসরি টেলিগ্রাম চ্যানেলে ডেলিভারি (Direct Telegram Delivery)
+      # ৩. সরাসরি টেলিগ্রাম চ্যানেলে ডেলিভারি (Fail-Safe Direct Telegram Delivery)
       - name: Send APK Directly to Telegram Channel
-        if: ${{ (github.event.inputs.send_to_telegram == 'true' || github.event_name == 'schedule') && env.TG_BOT_TOKEN != '' }}
+        if: ${{ github.event.inputs.send_to_telegram == 'true' || github.event_name == 'schedule' }}
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
         run: |
+          if [ -z "$TG_BOT_TOKEN" ]; then
+            echo "TG_BOT_TOKEN Secret is not set. Skipping Telegram upload."
+            exit 0
+          fi
+          
           echo "Uploading APK(s) to Telegram Channel..."
           CHANNEL_ID="@hddbbdhdbdbbebebhff"
           
@@ -1115,7 +1112,6 @@ jobs:
             fi
           done
 
-      # গিটহাব রিলিজ সেকশনে অটো-আপলোড
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
