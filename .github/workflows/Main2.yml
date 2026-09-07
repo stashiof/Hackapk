@@ -167,7 +167,7 @@ jobs:
             elif [ "$apk_count" -eq "1" ]; then
               find downloaded_apks -name "*.apk" -exec cp {} universal.apk \;
             else
-              echo "Error: Play Store থেকে APK নামানো যায়নি।"
+              echo "Error: Play Store থেকে APK নামানো যায়নি। গুগল ড্রাইভে APK আপলোড করে ড্রাইভ লিঙ্ক ব্যবহার করুন।"
               exit 1
             fi
           else
@@ -188,7 +188,7 @@ jobs:
               gdown.download(url=raw_input, output=output, quiet=False)
 
           if not os.path.exists(output) or os.path.getsize(output) == 0:
-              print("::error::Google Drive থেকে ফাইল নামানো যায়নি।")
+              print("::error::Google Drive থেকে ফাইল নামানো যায়নি। লিঙ্ক পারমিশন 'Anyone with the link' নিশ্চিত করুন।")
               sys.exit(1)
           PYEOF
 
@@ -209,7 +209,7 @@ jobs:
       - name: Premium Features Unlock (Complete Unified Patch)
         if: ${{ github.event.inputs.unlock_premium == 'true' }}
         run: |
-          echo "Applying Enhanced Smali Patches (Full Access + Always Open Free Trial)..."
+          echo "Applying Unified Smali Patches..."
           python3 - << 'EOF'
           import os, re
 
@@ -228,7 +228,7 @@ jobs:
                       c = f.read()
                   orig = c
 
-                  # 1. slh.smali -> Routing Logic & Exam/Routine Timer Bypass
+                  # 1. slh.smali -> Routing Logic (Live, Recorded & Upcoming separation)
                   if file == "slh.smali":
                       c = re.sub(
                           r'(iget-boolean ([vp]\d+), ([vp]\d+), Lz19;->o0:Z\s+if-eqz \2, (:cond_\w+))\s+(:cond_\w+)',
@@ -263,37 +263,36 @@ jobs:
                           c
                       )
 
-                  # 6. n4.smali -> Academic Program Model (Active, Enrolled & Always Show Trial)
+                  # 6. n4.smali -> Academic Program Model (Pre-course trial & unlocked state)
                   elif file == "n4.smali":
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c)
                       # trialEnabled = true
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->u:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->u:Z', c)
-                      # showTrial = true (কোর্স শুরু হওয়ার আগেই ট্রায়াল নেওয়ার বাটন দৃশ্যমান করবে)
+                      # showTrial = true (Forces UI to always show trial before course starts)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->v:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Ln4;->g:Ljava/lang/Boolean;', c)
 
-                  # 7. h7c.smali -> Quarter Model (Bypass course start wait & enable trial eligibility)
+                  # 7. h7c.smali -> Quarter Model
                   elif file == "h7c.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
                           r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
                           c
                       )
-                      # has_free_trial_enrolment = FALSE (যাতে ট্রায়াল অপশন ব্লক না হয়)
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->g:Ljava/lang/Boolean;',
                           r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->g:Ljava/lang/Boolean;',
                           c
                       )
-                      # is_current = TRUE (কোর্স শুরু হওয়ার আগেই কারেন্ট হিসেবে গণ্য করবে)
+                      # is_current = true
                       c = re.sub(
-                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->i:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->i:Ljava/lang/Boolean;',
+                          r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->h:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->h:Ljava/lang/Boolean;',
                           c
                       )
                       c = re.sub(
@@ -309,7 +308,7 @@ jobs:
                           r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
                           c
                       )
-                      # is_current = TRUE
+                      # is_current = true
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->c:Ljava/lang/Boolean;',
                           r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->c:Ljava/lang/Boolean;',
@@ -321,7 +320,7 @@ jobs:
                           c
                       )
 
-                  # 9. h30.smali -> AppPreference (Access level "Full" & Infinity Download)
+                  # 9. h30.smali -> AppPreference (Access level "Full")
                   elif file == "h30.smali":
                       c = re.sub(
                           r'\.method public final d\(\)Ljava/lang/String;.*?\.end method',
@@ -889,7 +888,7 @@ jobs:
           .method public final onClick(Landroid/content/DialogInterface;I)V
               .registers 5
               iget-object p2, p0, Lcom/mod/helper/WelcomeDialog$1;->a:Landroid/content/SharedPreferences;
-              invoke-interface {{p2}}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+              invoke-interface {{p2}}, Landroid/content/SharedPreferences$Editor;->edit()Landroid/content/SharedPreferences$Editor;
               move-result-object p2
               const-string v0, "{b64_pref_key}"
               invoke-static {{v0}}, Lcom/mod/helper/WelcomeDialog;->b64(Ljava/lang/String;)Ljava/lang/String;
