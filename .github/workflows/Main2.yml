@@ -263,16 +263,17 @@ jobs:
                           c
                       )
 
-                  # 6. n4.smali -> Academic Program Model (Pre-course trial & unlocked state)
+                  # 6. n4.smali -> Academic Program Model (Force Free Trial)
                   elif file == "n4.smali":
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->l:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->l:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->m:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->m:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->t:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->t:Z', c)
                       # trialEnabled = true
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->u:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->u:Z', c)
-                      # showTrial = true (Forces UI to always show trial before course starts)
+                      # showTrial = true (Forces UI to always show trial)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->v:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->v:Z', c)
-                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->w:Z', c)
+                      # isEnrolled = false (যাতে ফ্রি ট্রায়াল অপশন সচল থাকে)
+                      c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->w:Z', r'const/4 \1, 0x0\n    iput-boolean \1, \2, Ln4;->w:Z', c)
                       c = re.sub(r'iput-boolean ([vp]\d+), ([vp]\d+), Ln4;->p:Z', r'const/4 \1, 0x1\n    iput-boolean \1, \2, Ln4;->p:Z', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->h:Ljava/lang/String;', r'const-string \1, "Full"\n    iput-object \1, \2, Ln4;->h:Ljava/lang/String;', c)
                       c = re.sub(r'iput-object ([vp]\d+), ([vp]\d+), Ln4;->g:Ljava/lang/Boolean;', r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Ln4;->g:Ljava/lang/Boolean;', c)
@@ -281,7 +282,7 @@ jobs:
                   elif file == "h7c.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lh7c;->f:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lh7c;->f:Ljava/lang/Boolean;',
                           c
                       )
                       c = re.sub(
@@ -305,7 +306,7 @@ jobs:
                   elif file == "u7c.smali":
                       c = re.sub(
                           r'iput-object ([vp]\d+), ([vp]\d+), Lu7c;->a:Ljava/lang/Boolean;',
-                          r'sget-object \1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
+                          r'sget-object \1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;\n    iput-object \1, \2, Lu7c;->a:Ljava/lang/Boolean;',
                           c
                       )
                       # is_current = true
@@ -351,16 +352,16 @@ jobs:
 
                   # 13 & 14. d8c.smali, m7c.smali -> Course Enrollment Parsers
                   elif file == "d8c.smali":
-                      c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      c = c.replace('check-cast v1, Ljava/lang/Boolean;', 'sget-object v1, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v4, Ljava/lang/Boolean;', 'sget-object v4, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
                   elif file == "m7c.smali":
-                      c = c.replace('check-cast v9, Ljava/lang/Boolean;', 'sget-object v9, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;')
+                      c = c.replace('check-cast v9, Ljava/lang/Boolean;', 'sget-object v9, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v10, Ljava/lang/Boolean;', 'sget-object v10, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
                       c = c.replace('check-cast v17, Ljava/lang/Boolean;', 'sget-object v17, Ljava/lang/Boolean;->FALSE:Ljava/lang/Boolean;')
 
-                  # 15. ejc.smali -> Profile Quarter Card View Holder
+                  # 15. ejc.smali -> বাটনে সরাসরি 'ফ্রিতে শেখো' (0x7f1403d0) সেট করা
                   elif file in ["ejc.smali", "Lejc.smali"]:
-                      c = c.replace('const v6, 0x7f1403d0', 'const v6, 0x7f140047')
+                      c = c.replace('const v6, 0x7f140047', 'const v6, 0x7f1403d0')
                       c = c.replace('const v8, 0x7f0600fd', 'const v8, 0x7f0604fd')
                       c = c.replace('const v6, 0x7f0604dd', 'const v6, 0x7f060547')
                       c = c.replace('const v6, 0x7f0808e7', 'const v6, 0x7f0808e8')
