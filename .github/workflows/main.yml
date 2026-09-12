@@ -1,4 +1,4 @@
-name: Ultimate App Modder 💥
+name: Ultimate App Modder 🚀
 
 on:
   workflow_dispatch:
@@ -460,11 +460,12 @@ jobs:
                       content = f.read()
                   orig = content
 
+                  # .locals 0 directive explicitly added to avoid compiler errors
                   if "CertificatePinner" in file or "CertificatePinner" in filepath:
-                      content = patt_pinner.sub(r'\1\n    return-void\n.end method', content)
+                      content = patt_pinner.sub(r'\1\n    .locals 0\n    return-void\n.end method', content)
 
                   if "TrustManager" in file or "TrustManager" in filepath or "checkServerTrusted" in content:
-                      content = patt_trust.sub(r'\1\n    return-void\n.end method', content)
+                      content = patt_trust.sub(r'\1\n    .locals 0\n    return-void\n.end method', content)
 
                   if content != orig:
                       with open(filepath, "w", encoding="utf-8") as f:
