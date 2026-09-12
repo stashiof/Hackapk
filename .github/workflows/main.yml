@@ -1,4 +1,4 @@
-name: Ultimate App Modder 🚀
+name: Ultimate App Modder 💥
 
 on:
   workflow_dispatch:
@@ -50,6 +50,11 @@ on:
         default: true
       bypass_secure:
         description: 'স্ক্রিনশট/রেকর্ড রেস্ট্রিকশন ভাঙতে চান?'
+        required: true
+        type: boolean
+        default: true
+      enable_reqable:
+        description: 'Reqable / HTTPS ট্র্যাফিক ক্যাপচার ও SSL Pinning বাইপাস যোগ করবেন?'
         required: true
         type: boolean
         default: true
@@ -365,6 +370,110 @@ jobs:
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->setFlags(II)V/ s/^/# patched /' {} +
           find decompiled_app/smali* -type f -name "*.smali" -exec sed -i '/Landroid\/view\/Window;->addFlags(I)V/ s/^/# patched /' {} +
 
+      - name: Enable Reqable Support & Bypass SSL Pinning
+        if: ${{ github.event.inputs.enable_reqable == 'true' }}
+        run: |
+          echo "Configuring Reqable support (Network Security Config & SSL Unpinning)..."
+          python3 - << 'EOF'
+          import os, re
+
+          # 1. Create network_security_config.xml to trust User CA certificates
+          res_xml_dir = "decompiled_app/res/xml"
+          os.makedirs(res_xml_dir, exist_ok=True)
+          nsc_path = os.path.join(res_xml_dir, "network_security_config.xml")
+
+          nsc_content = """<?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <base-config cleartextTrafficPermitted="true">
+                  <trust-anchors>
+                      <certificates src="system" />
+                      <certificates src="user" />
+                  </trust-anchors>
+              </base-config>
+              <debug-overrides>
+                  <trust-anchors>
+                      <certificates src="system" />
+                      <certificates src="user" />
+                  </trust-anchors>
+              </debug-overrides>
+          </network-security-config>
+          """
+          with open(nsc_path, "w", encoding="utf-8") as f:
+              f.write(nsc_content.strip())
+          print(f"-> Created Network Security Config: {nsc_path}")
+
+          # 2. Update AndroidManifest.xml with networkSecurityConfig & cleartext traffic
+          manifest_path = "decompiled_app/AndroidManifest.xml"
+          if os.path.exists(manifest_path):
+              with open(manifest_path, "r", encoding="utf-8") as f:
+                  manifest = f.read()
+
+              if 'android:networkSecurityConfig=' in manifest:
+                  manifest = re.sub(
+                      r'android:networkSecurityConfig="[^"]*"',
+                      'android:networkSecurityConfig="@xml/network_security_config"',
+                      manifest
+                  )
+              else:
+                  manifest = re.sub(
+                      r'<application\b',
+                      '<application android:networkSecurityConfig="@xml/network_security_config"',
+                      manifest,
+                      count=1
+                  )
+
+              if 'android:usesCleartextTraffic=' in manifest:
+                  manifest = re.sub(
+                      r'android:usesCleartextTraffic="[^"]*"',
+                      'android:usesCleartextTraffic="true"',
+                      manifest
+                  )
+              else:
+                  manifest = re.sub(
+                      r'<application\b',
+                      '<application android:usesCleartextTraffic="true"',
+                      manifest,
+                      count=1
+                  )
+
+              with open(manifest_path, "w", encoding="utf-8") as f:
+                  f.write(manifest)
+              print("-> AndroidManifest.xml successfully patched for Reqable interception")
+
+          # 3. Universal Smali Patch for OkHttp CertificatePinner & TrustManager (SSL Pinning Bypass)
+          patt_pinner = re.compile(
+              r'(\.method\s+(?:public|final|\s)*\s+check(?:(?:\$okhttp)?)\(Ljava/lang/String;[^\)]+\)V)(.*?\.end method)',
+              re.DOTALL
+          )
+          patt_trust = re.compile(
+              r'(\.method\s+(?:public|final|\s)*\s+checkServerTrusted\(\[[^\)]+\)V)(.*?\.end method)',
+              re.DOTALL
+          )
+
+          patched_count = 0
+          for root, dirs, files in os.walk("decompiled_app"):
+              for file in files:
+                  if not file.endswith(".smali"):
+                      continue
+                  filepath = os.path.join(root, file)
+                  with open(filepath, "r", encoding="utf-8") as f:
+                      content = f.read()
+                  orig = content
+
+                  if "CertificatePinner" in file or "CertificatePinner" in filepath:
+                      content = patt_pinner.sub(r'\1\n    return-void\n.end method', content)
+
+                  if "TrustManager" in file or "TrustManager" in filepath or "checkServerTrusted" in content:
+                      content = patt_trust.sub(r'\1\n    return-void\n.end method', content)
+
+                  if content != orig:
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(content)
+                      patched_count += 1
+
+          print(f"-> SSL Pinning bypassed across {patched_count} smali files for Reqable.")
+          EOF
+
       - name: Replace Brand Vectors (Golden Shield & Emblem)
         if: ${{ github.event.inputs.change_vectors == 'true' }}
         run: |
@@ -410,7 +519,7 @@ jobs:
 
                   <path android:fillColor="#1FB8A8" android:pathData="M17.323,39.3328C17.323,39.0671 30.993,37.5394 42.6953,36.2858C51.4128,35.3518 59.0469,34.5672 59.0469,34.5672C59.0469,34.5672 59.0469,51.4834 45.3479,57.0668C45.3479,57.0668 34.7706,61.0893 24.1767,53.1937C24.1767,53.1937 17.8834,48.5692 17.323,39.3328Z" />
                   <path android:fillColor="#FF6B4A" android:pathData="M42.6953,36.2858L63.8166,30.3952L56.8924,44.3391L42.6953,36.2858Z" />
-                  <path android:fillColor="#FFC24B" android:pathData="M51.5955,23.0932C61.1433,21.304 63.8166,30.3952 63.8166,30.3952L42.6953,36.2858C42.8862,23.8487 51.5955,23.0932 51.5955,23.0932Z" />
+                  <path android:fillColor="#FFC24B" android:pathData="M51.5955,23.0932C61.1433,21.304 63.8166,30.3952L63.8166,30.3952L42.6953,36.2858C42.8862,23.8487 51.5955,23.0932 51.5955,23.0932Z" />
                   <path android:fillColor="#12897D" android:pathData="M62.5713,25.8081L69.7653,22.5411L64.7175,29.731L62.5713,25.8081Z" />
                   <path android:fillColor="#B388FF" android:pathData="M9.2738,19.9632C9.2738,19.9632 8.3813,18.6223 9.2738,17.5762C9.6899,17.163 10.2525,16.9311 10.8388,16.9311C11.4252,16.9311 11.9878,17.163 12.4039,17.5762L30.2873,38.7474C30.2873,38.7474 31.4787,40.4079 30.2873,41.2797C30.2873,41.2797 29.0917,43.3553 26.2606,40.5366L9.2738,19.9632Z" />
                   <path android:fillColor="#9563E0" android:pathData="M6.4219,22.6324C6.4219,22.6324 5.6913,21.5407 6.4219,20.6855C6.7618,20.3478 7.2214,20.1583 7.7005,20.1583C8.1796,20.1583 8.6392,20.3478 8.9791,20.6855L23.5789,37.967C23.5789,37.967 24.5545,39.3079 23.5789,40.0426C23.5789,40.0426 22.6075,41.7488 20.2953,39.4365L6.4219,22.6324Z" />
