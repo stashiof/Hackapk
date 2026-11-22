@@ -52,7 +52,7 @@ jobs:
           file_id = match.group(1)
           direct_url = f"https://drive.google.com/uc?id={file_id}"
 
-          # ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা (যদি ডাউনলোড পারমিশন খোলা থাকে)
+          # ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা
           print("ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা করা হচ্ছে...")
           subprocess.run(["gdown", "--fuzzy", direct_url, "-O", out_name], check=False)
 
@@ -64,7 +64,7 @@ jobs:
               else:
                   os.remove(out_name)
 
-          # ধাপ ২: যদি View-only হয়, তবে নেটওয়ার্ক স্ট্রিম থেকে আসল ডেটা ক্যাপচার করা
+          # ধাপ ২: নেটওয়ার্ক স্ট্রিম থেকে আসল ডেটা ক্যাপচার করা
           if not os.path.exists(out_name):
               print("ডাউনলোড রেস্ট্রিক্টেড (View-only)। নেটওয়ার্ক স্ট্রিম থেকে আসল ফাইল ধরা হচ্ছে...")
               preview_url = f"https://drive.google.com/file/d/{file_id}/view"
@@ -76,7 +76,7 @@ jobs:
                   page = context.new_page()
 
                   def handle_response(response):
-                      nonlocal captured_pdf
+                      global captured_pdf
                       try:
                           ctype = response.headers.get("content-type", "").lower()
                           if "application/pdf" in ctype or "application/octet-stream" in ctype:
