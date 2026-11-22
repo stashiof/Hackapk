@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install gdown playwright requests img2pdf
+          pip install gdown playwright requests pillow
           playwright install chromium
           playwright install-deps chromium
 
@@ -36,7 +36,8 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           python - << 'EOF'
-          import os, re, sys, time, base64, subprocess, requests, img2pdf
+          import os, re, sys, io, time, subprocess, requests
+          from PIL import Image
           from playwright.sync_api import sync_playwright
 
           raw_url = os.environ["DRIVE_URL"].strip()
@@ -46,27 +47,27 @@ jobs:
 
           match = re.search(r'(?:/d/|id=)([a-zA-Z0-9_-]{25,})', raw_url)
           if not match:
-              print("সঠিক Google Drive লিংক দিন!")
+              print("ভুল লিংক! সঠিক Google Drive লিংক দিন।")
               sys.exit(1)
 
           file_id = match.group(1)
 
-          # ধাপ ১: সরাসরি file_id দিয়ে আসল ফাইল ডাউনলোডের চেষ্টা
+          # ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা
           print("ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা করা হচ্ছে...")
           subprocess.run(["gdown", file_id, "-O", out_name], check=False)
 
           if os.path.exists(out_name) and os.path.getsize(out_name) > 5000:
               with open(out_name, "rb") as f:
-                  header = f.read(5)
-              if header == b"%PDF-":
-                  print("সফল! সরাসরি আসল PDF ফাইল ডাউনলোড হয়েছে।")
-              else:
-                  os.remove(out_name)
+                  if f.read(5) == b"%PDF-":
+                      print(f"সফল! সরাসরি আসল PDF ডাউনলোড হয়েছে ({os.path.getsize(out_name)/1024:.1f} KB)।")
+                  else:
+                      os.remove(out_name)
 
-          # ধাপ ২: View-only হলে ব্রাউজার ভিউয়ার থেকে সব পেজ এক্সট্রাক্ট করা
+          # ধাপ ২: View-only হলে নেটওয়ার্ক থেকে প্রতিটি পেজের আসল ইমেজ ক্যাপচার করা
           if not os.path.exists(out_name):
-              print("ডাউনলোড রেস্ট্রিক্টেড। ভিউয়ার থেকে সব পেজ সংগ্রহ করা হচ্ছে...")
+              print("ডাউনলোড রেস্ট্রিক্টেড। নেটওয়ার্ক থেকে প্রতিটি পেজ ক্যাপচার করা হচ্ছে...")
               preview_url = f"https://drive.google.com/file/d/{file_id}/preview"
+              captured_pages = {}
 
               with sync_playwright() as p:
                   browser = p.chromium.launch(headless=True)
@@ -75,53 +76,88 @@ jobs:
                       device_scale_factor=2
                   )
                   page = context.new_page()
-                  page.goto(preview_url, wait_until="networkidle", timeout=90000)
-                  time.sleep(4)
 
-                  last_height = -1
-                  same_count = 0
-                  for _ in range(300):
+                  def handle_response(response):
+                      try:
+                          url = response.url
+                          ctype = response.headers.get("content-type", "").lower()
+                          if "image/" in ctype and "page=" in url:
+                              m = re.search(r'[?&]page=(\d+)', url)
+                              if m:
+                                  p_num = int(m.group(1))
+                                  body = response.body()
+                                  if len(body) > 5000:
+                                      # একই পেজের সবচেয়ে হাই-রেজোলিউশন ছবিটি রাখা
+                                      if p_num not in captured_pages or len(body) > len(captured_pages[p_num]):
+                                          captured_pages[p_num] = body
+                      except Exception:
+                          pass
+
+                  page.on("response", handle_response)
+                  page.goto(preview_url, wait_until="networkidle", timeout=90000)
+                  time.sleep(5)
+
+                  # লিংকটি প্রাইভেট বা লগইন চাইছে কিনা চেক করা
+                  if "accounts.google.com" in page.url:
+                      print("ব্যর্থ: এই লিংকটি প্রাইভেট (লগইন ছাড়া দেখা যাচ্ছে না)।")
+                      browser.close()
+                      sys.exit(1)
+
+                  # ভিউয়ারে ফোকাস করার জন্য স্ক্রিনের মাঝখানে ক্লিক করা
+                  page.mouse.click(720, 500)
+                  time.sleep(1)
+
+                  last_count = 0
+                  stale_rounds = 0
+                  for step in range(300):
+                      page.mouse.wheel(0, 1200)
                       page.keyboard.press("PageDown")
-                      time.sleep(0.5)
-                      curr_scroll = page.evaluate("""() => {
-                          const divs = Array.from(document.querySelectorAll('div'));
-                          const sDiv = divs.find(d => d.scrollHeight > d.clientHeight && d.clientHeight > 400);
-                          return sDiv ? sDiv.scrollTop : window.scrollY;
-                      }""")
-                      if curr_scroll == last_height:
-                          same_count += 1
-                          if same_count >= 5:
+                      time.sleep(0.7)
+
+                      if len(captured_pages) == last_count:
+                          stale_rounds += 1
+                          if stale_rounds >= 10:
                               break
                       else:
-                          same_count = 0
-                      last_height = curr_scroll
+                          stale_rounds = 0
+                          last_count = len(captured_pages)
 
                   time.sleep(2)
-                  base64_images = page.evaluate("""async () => {
-                      const imgs = Array.from(document.querySelectorAll('img'))
-                          .filter(img => img.src.startsWith('blob:') && img.naturalWidth > 150);
-                      imgs.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-                      const results = [];
-                      for (const img of imgs) {
-                          const canvas = document.createElement('canvas');
-                          canvas.width = img.naturalWidth;
-                          canvas.height = img.naturalHeight;
-                          canvas.getContext('2d').drawImage(img, 0, 0);
-                          results.push(canvas.toDataURL('image/jpeg', 0.95).split(',')[1]);
-                      }
-                      return results;
-                  }""")
                   browser.close()
 
-              if not base64_images:
-                  print("ব্যর্থ: কোনো পেজ পাওয়া যায়নি। লিংকটি 'Anyone with the link' করা আছে কিনা নিশ্চিত করুন।")
+              if not captured_pages:
+                  print("ব্যর্থ: কোনো পেজ পাওয়া যায়নি। ফাইলটি পাবলিক ('Anyone with the link') আছে কিনা নিশ্চিত করুন।")
                   sys.exit(1)
 
-              print(f"মোট {len(base64_images)} টি পেজ পাওয়া গেছে। PDF তৈরি হচ্ছে...")
-              img_bytes = [base64.b64decode(b) for b in base64_images]
-              with open(out_name, "wb") as f:
-                  f.write(img2pdf.convert(img_bytes))
-              print("সফল! সম্পূর্ণ PDF ডাউনলোড হয়েছে।")
+              print(f"মোট {len(captured_pages)} টি পেজ ক্যাপচার হয়েছে। PDF তৈরি করা হচ্ছে...")
+              pil_images = []
+              for p_num in sorted(captured_pages.keys()):
+                  try:
+                      img = Image.open(io.BytesIO(captured_pages[p_num]))
+                      if img.mode in ("RGBA", "P", "LA"):
+                          bg = Image.new("RGB", img.size, (255, 255, 255))
+                          if img.mode == "P":
+                              img = img.convert("RGBA")
+                          bg.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+                          img = bg
+                      elif img.mode != "RGB":
+                          img = img.convert("RGB")
+                      pil_images.append(img)
+                  except Exception as e:
+                      print(f"পেজ {p_num} স্কিপ করা হয়েছে: {e}")
+
+              if not pil_images:
+                  print("ব্যর্থ: কোনো ভ্যালিড ইমেজ প্রসেস করা যায়নি।")
+                  sys.exit(1)
+
+              pil_images[0].save(
+                  out_name,
+                  "PDF",
+                  resolution=150.0,
+                  save_all=True,
+                  append_images=pil_images[1:]
+              )
+              print(f"সফল! {len(pil_images)} পেজের PDF তৈরি হয়েছে (সাইজ: {os.path.getsize(out_name)/1024:.1f} KB)।")
 
           # টেলিগ্রামে পাঠানো (যদি সেট করা থাকে)
           token = os.environ.get("TG_BOT_TOKEN")
