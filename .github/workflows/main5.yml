@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install gdown playwright requests
+          pip install gdown playwright requests img2pdf
           playwright install chromium
           playwright install-deps chromium
 
@@ -36,7 +36,7 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           python - << 'EOF'
-          import os, re, sys, time, subprocess, requests
+          import os, re, sys, time, base64, subprocess, requests, img2pdf
           from playwright.sync_api import sync_playwright
 
           raw_url = os.environ["DRIVE_URL"].strip()
@@ -50,11 +50,10 @@ jobs:
               sys.exit(1)
 
           file_id = match.group(1)
-          direct_url = f"https://drive.google.com/uc?id={file_id}"
 
-          # ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা
+          # ধাপ ১: সরাসরি file_id দিয়ে আসল ফাইল ডাউনলোডের চেষ্টা
           print("ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা করা হচ্ছে...")
-          subprocess.run(["gdown", "--fuzzy", direct_url, "-O", out_name], check=False)
+          subprocess.run(["gdown", file_id, "-O", out_name], check=False)
 
           if os.path.exists(out_name) and os.path.getsize(out_name) > 5000:
               with open(out_name, "rb") as f:
@@ -64,40 +63,65 @@ jobs:
               else:
                   os.remove(out_name)
 
-          # ধাপ ২: নেটওয়ার্ক স্ট্রিম থেকে আসল ডেটা ক্যাপচার করা
+          # ধাপ ২: View-only হলে ব্রাউজার ভিউয়ার থেকে সব পেজ এক্সট্রাক্ট করা
           if not os.path.exists(out_name):
-              print("ডাউনলোড রেস্ট্রিক্টেড (View-only)। নেটওয়ার্ক স্ট্রিম থেকে আসল ফাইল ধরা হচ্ছে...")
-              preview_url = f"https://drive.google.com/file/d/{file_id}/view"
-              captured_pdf = None
+              print("ডাউনলোড রেস্ট্রিক্টেড। ভিউয়ার থেকে সব পেজ সংগ্রহ করা হচ্ছে...")
+              preview_url = f"https://drive.google.com/file/d/{file_id}/preview"
 
               with sync_playwright() as p:
                   browser = p.chromium.launch(headless=True)
-                  context = browser.new_context()
+                  context = browser.new_context(
+                      viewport={"width": 1440, "height": 2000},
+                      device_scale_factor=2
+                  )
                   page = context.new_page()
-
-                  def handle_response(response):
-                      global captured_pdf
-                      try:
-                          ctype = response.headers.get("content-type", "").lower()
-                          if "application/pdf" in ctype or "application/octet-stream" in ctype:
-                              body = response.body()
-                              if body.startswith(b"%PDF-"):
-                                  captured_pdf = body
-                      except Exception:
-                          pass
-
-                  page.on("response", handle_response)
                   page.goto(preview_url, wait_until="networkidle", timeout=90000)
-                  time.sleep(5)
+                  time.sleep(4)
+
+                  last_height = -1
+                  same_count = 0
+                  for _ in range(300):
+                      page.keyboard.press("PageDown")
+                      time.sleep(0.5)
+                      curr_scroll = page.evaluate("""() => {
+                          const divs = Array.from(document.querySelectorAll('div'));
+                          const sDiv = divs.find(d => d.scrollHeight > d.clientHeight && d.clientHeight > 400);
+                          return sDiv ? sDiv.scrollTop : window.scrollY;
+                      }""")
+                      if curr_scroll == last_height:
+                          same_count += 1
+                          if same_count >= 5:
+                              break
+                      else:
+                          same_count = 0
+                      last_height = curr_scroll
+
+                  time.sleep(2)
+                  base64_images = page.evaluate("""async () => {
+                      const imgs = Array.from(document.querySelectorAll('img'))
+                          .filter(img => img.src.startsWith('blob:') && img.naturalWidth > 150);
+                      imgs.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+                      const results = [];
+                      for (const img of imgs) {
+                          const canvas = document.createElement('canvas');
+                          canvas.width = img.naturalWidth;
+                          canvas.height = img.naturalHeight;
+                          canvas.getContext('2d').drawImage(img, 0, 0);
+                          results.push(canvas.toDataURL('image/jpeg', 0.95).split(',')[1]);
+                      }
+                      return results;
+                  }""")
                   browser.close()
 
-              if captured_pdf:
-                  with open(out_name, "wb") as f:
-                      f.write(captured_pdf)
-                  print("সফল! নেটওয়ার্ক স্ট্রিম থেকে আসল PDF সেভ হয়েছে।")
-              else:
-                  print("ব্যর্থ: গুগল সার্ভার এই ফাইলটির মূল PDF স্ট্রিম ব্লক করে কেবল এনক্রিপ্টেড পেজ ভিউ দিচ্ছে।")
+              if not base64_images:
+                  print("ব্যর্থ: কোনো পেজ পাওয়া যায়নি। লিংকটি 'Anyone with the link' করা আছে কিনা নিশ্চিত করুন।")
                   sys.exit(1)
+
+              print(f"মোট {len(base64_images)} টি পেজ পাওয়া গেছে। PDF তৈরি হচ্ছে...")
+              img_bytes = [base64.b64decode(b) for b in base64_images]
+              with open(out_name, "wb") as f:
+                  f.write(img2pdf.convert(img_bytes))
+              print("সফল! সম্পূর্ণ PDF ডাউনলোড হয়েছে।")
 
           # টেলিগ্রামে পাঠানো (যদি সেট করা থাকে)
           token = os.environ.get("TG_BOT_TOKEN")
