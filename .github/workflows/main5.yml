@@ -1,0 +1,118 @@
+name: Original Drive PDF Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      drive_url:
+        description: 'Google Drive Link দিন'
+        required: true
+        type: string
+      file_name:
+        description: 'ফাইলের নাম (যেমন: book.pdf)'
+        required: false
+        default: 'original_file.pdf'
+        type: string
+
+jobs:
+  download-original:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install gdown playwright requests
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Download Original File
+        env:
+          DRIVE_URL: ${{ github.event.inputs.drive_url }}
+          FILE_NAME: ${{ github.event.inputs.file_name }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          python - << 'EOF'
+          import os, re, sys, time, subprocess, requests
+          from playwright.sync_api import sync_playwright
+
+          raw_url = os.environ["DRIVE_URL"].strip()
+          out_name = os.environ["FILE_NAME"].strip()
+          if not out_name.endswith(".pdf"):
+              out_name += ".pdf"
+
+          match = re.search(r'(?:/d/|id=)([a-zA-Z0-9_-]{25,})', raw_url)
+          if not match:
+              print("সঠিক Google Drive লিংক দিন!")
+              sys.exit(1)
+
+          file_id = match.group(1)
+          direct_url = f"https://drive.google.com/uc?id={file_id}"
+
+          # ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা (যদি ডাউনলোড পারমিশন খোলা থাকে)
+          print("ধাপ ১: সরাসরি আসল ফাইল ডাউনলোডের চেষ্টা করা হচ্ছে...")
+          subprocess.run(["gdown", "--fuzzy", direct_url, "-O", out_name], check=False)
+
+          if os.path.exists(out_name) and os.path.getsize(out_name) > 5000:
+              with open(out_name, "rb") as f:
+                  header = f.read(5)
+              if header == b"%PDF-":
+                  print("সফল! সরাসরি আসল PDF ফাইল ডাউনলোড হয়েছে।")
+              else:
+                  os.remove(out_name)
+
+          # ধাপ ২: যদি View-only হয়, তবে নেটওয়ার্ক স্ট্রিম থেকে আসল ডেটা ক্যাপচার করা
+          if not os.path.exists(out_name):
+              print("ডাউনলোড রেস্ট্রিক্টেড (View-only)। নেটওয়ার্ক স্ট্রিম থেকে আসল ফাইল ধরা হচ্ছে...")
+              preview_url = f"https://drive.google.com/file/d/{file_id}/view"
+              captured_pdf = None
+
+              with sync_playwright() as p:
+                  browser = p.chromium.launch(headless=True)
+                  context = browser.new_context()
+                  page = context.new_page()
+
+                  def handle_response(response):
+                      nonlocal captured_pdf
+                      try:
+                          ctype = response.headers.get("content-type", "").lower()
+                          if "application/pdf" in ctype or "application/octet-stream" in ctype:
+                              body = response.body()
+                              if body.startswith(b"%PDF-"):
+                                  captured_pdf = body
+                      except Exception:
+                          pass
+
+                  page.on("response", handle_response)
+                  page.goto(preview_url, wait_until="networkidle", timeout=90000)
+                  time.sleep(5)
+                  browser.close()
+
+              if captured_pdf:
+                  with open(out_name, "wb") as f:
+                      f.write(captured_pdf)
+                  print("সফল! নেটওয়ার্ক স্ট্রিম থেকে আসল PDF সেভ হয়েছে।")
+              else:
+                  print("ব্যর্থ: গুগল সার্ভার এই ফাইলটির মূল PDF স্ট্রিম ব্লক করে কেবল এনক্রিপ্টেড পেজ ভিউ দিচ্ছে।")
+                  sys.exit(1)
+
+          # টেলিগ্রামে পাঠানো (যদি সেট করা থাকে)
+          token = os.environ.get("TG_BOT_TOKEN")
+          chat_id = os.environ.get("TG_CHAT_ID")
+          if token and chat_id and os.path.exists(out_name):
+              with open(out_name, "rb") as f:
+                  requests.post(
+                      f"https://api.telegram.org/bot{token}/sendDocument",
+                      data={"chat_id": chat_id},
+                      files={"document": f}
+                  )
+          EOF
+
+      - name: Upload Original PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: Original-PDF
+          path: "*.pdf"
